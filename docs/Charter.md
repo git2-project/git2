@@ -16,6 +16,8 @@ git2 is an open-source, self-hosted Git platform in the spirit of GitLab that a 
       Owns the gateway (TLS, sign-in check, serving both UIs), git2ctl install and upgrades, Docker and Helm packaging, and backup-svc for encrypted snapshots and one-command restore.
     * **Zarif Beste Süner** : Scrum Master, Admin & Identity Owner  
       Runs the sprints and daily updates. Owns admin-web, admin-api and auth-svc: users, teams, SSO and LDAP, access tokens, runner and instance settings, and the audit log.
+    * **Claude (AI Agent)** : AI Development Assistant  
+      Used by the whole team through Claude Code to write, review and test code, guided by a CLAUDE.md file in each service. Every AI-generated change is reviewed by its service owner before merge.
 * **GH Repo/Project URL:** https://github.com/git2-project/git2
 
 ## 3. Project Scope
