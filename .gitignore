@@ -1,0 +1,9 @@
+# Secrets
+.env
+
+# Go
+/bin/
+*.test
+*.out
+
+.DS_Store

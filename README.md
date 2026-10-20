@@ -5,14 +5,13 @@
 
 **Repos:** [git2](https://github.com/git2-project/git2) · [git2-codeplane](https://github.com/git2-project/git2-codeplane) · [git2-runner](https://github.com/git2-project/git2-runner) · [git2-deploy](https://github.com/git2-project/git2-deploy)
 
-This is the core repo: the shared contracts, the web UI and every control-plane service except the Git engine and the CI runner.
+This is the core repo: the shared contracts and every control-plane service except the Git engine and the CI runner.
 
 ## What lives here
 
 | Path | What it is |
 | :--- | :--- |
 | `contracts/` | OpenAPI specs for public APIs and gRPC protos shared between services |
-| `web/` | React UI for both planes: **Dash** for developers, **Admin** for IT. Compiled to static files and served by `gateway` (no Node in prod) |
 | `dash-api/` | Repos, code browsing, merge requests, review, issues, search |
 | `admin-api/` | Users, teams, instance settings, runner management, audit log |
 | `auth-svc/` | Sign-in for both planes, tokens, SSO and LDAP |
@@ -20,6 +19,8 @@ This is the core repo: the shared contracts, the web UI and every control-plane 
 | `gateway/` | TLS termination, routing, static web assets |
 | `backup-svc/` | Encrypted (`age`) snapshots of the database, repos, `git2.yaml` and secrets into one bucket, plus full restore |
 | `cmd/git2/` | Single binary entrypoint that runs the services above |
+| `internal/` | Go packages shared by the services: config, Postgres, Redis, JWT, passwords, HTTP helpers, rate limiting |
+| `migrations/` | SQL migrations, applied in filename order by `make migrate`. One schema per service (`auth_svc`, …) |
 
 The Git engine (`git-svc`) lives in [git2-codeplane](https://github.com/git2-project/git2-codeplane), the CI job executor in [git2-runner](https://github.com/git2-project/git2-runner), and install/upgrade tooling in [git2-deploy](https://github.com/git2-project/git2-deploy).
 
@@ -29,7 +30,7 @@ The Git engine (`git-svc`) lives in [git2-codeplane](https://github.com/git2-pro
             browser / git client
                     │
                 ┌───▼────┐
-                │gateway │  TLS, routing, static web/
+                │gateway │  TLS, routing, static UI
                 └───┬────┘
       ┌────────┬────┴────┬─────────┬──────────┐
   dash-api admin-api  auth-svc   ci-svc   backup-svc
@@ -41,13 +42,36 @@ The Git engine (`git-svc`) lives in [git2-codeplane](https://github.com/git2-pro
 ```
 
 - **Services:** Go, talking gRPC internally; OpenAPI for public APIs.
-- **State and events:** PostgreSQL holds all data, and a transactional outbox carries events such as `repo.pushed` and `pipeline.finished`. No Redis, no Kafka or NATS.
+- **State and events:** PostgreSQL holds all data, and a transactional outbox carries events such as `repo.pushed` and `pipeline.finished`. Redis holds sessions, rate limits and caches. No Kafka or NATS.
 - **Object storage:** `gocloud.dev/blob`: S3, GCS, Azure Blob, R2, SeaweedFS, Garage, Ceph or local disk.
 - **Telemetry:** OpenTelemetry.
 
 ## Status
 
-Early development, on the 9-week plan in the [org README](https://github.com/git2-project). Nothing here is ready to run yet; build and test commands will land in this file and in `CLAUDE.md` as the code does.
+Early development, on the 9-week plan in the [org README](https://github.com/git2-project). `auth-svc` runs today; the other services are still to come.
+
+## Development
+
+Open the repo in the devcontainer (VS Code → *Reopen in Container*). It has Go 1.26, `psql` and a Redis service. The database is the team's Supabase project (dev only), reached through `POSTGRES_DSN`.
+
+```bash
+cp env.example .env    # fill in POSTGRES_DSN and JWT_SECRET (openssl rand -hex 32)
+make migrate           # apply migrations/ to POSTGRES_DSN (make show-migrations lists them)
+make run               # Go API on :8080, Ctrl-C stops it
+make tests             # go test ./...
+```
+
+Outside the devcontainer, `make deps` starts Redis from `docker-compose.dev.yml` first. Set `TEST_POSTGRES_DSN` to a throwaway database to include the Postgres integration test in `make tests`.
+
+### auth-svc API
+
+| Method | Path | |
+| :--- | :--- | :--- |
+| `POST` | `/api/auth/register` | `{email, username, password}` → `201` user |
+| `POST` | `/api/auth/login` | `{email, password}` → user; tokens in `X-Access-Token` / `X-Refresh-Token` headers |
+| `POST` | `/api/auth/refresh` | `{refresh_token}` → new token pair in the same headers; a replayed old token ends the session |
+| `POST` | `/api/auth/logout` | bearer access token + optional `{refresh_token}`; revokes both, always `200` |
+| `GET` | `/api/auth/me` | bearer access token → current user |
 
 ## Contributing
 

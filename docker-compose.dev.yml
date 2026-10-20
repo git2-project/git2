@@ -1,0 +1,22 @@
+# Local Redis for running git2 on the host (outside the devcontainer).
+# Usage: make deps   (or: docker compose -f docker-compose.dev.yml up -d)
+# Host port defaults to 6379; set REDIS_PORT in .env when another stack holds it
+# (and point REDIS_ADDR at the same port).
+
+services:
+  redis:
+    image: redis:7.4-alpine
+    restart: unless-stopped
+    ports:
+      # Loopback only: this Redis has no password.
+      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  redis_data:
