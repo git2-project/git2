@@ -1,0 +1,13 @@
+# Secrets
+.env
+
+# Go
+/bin/
+*.test
+*.out
+
+# Web
+web/node_modules/
+web/dist/
+
+.DS_Store

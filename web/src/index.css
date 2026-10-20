@@ -1,0 +1,19 @@
+:root {
+  --bg: #f6f7f9;
+  --text: #1c2024;
+  font-family: system-ui, -apple-system, sans-serif;
+  color: var(--text);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #111418;
+    --text: #e6e9ec;
+  }
+}
+
+body {
+  margin: 0;
+  padding: 16px;
+  background: var(--bg);
+}
