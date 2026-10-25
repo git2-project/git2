@@ -8,7 +8,7 @@
 | **Report name** | Project Plan |
 | **Project title** | git2 — A Self-Hosted Git Platform |
 | **Group name / number** | feastLabs |
-| **Group members** | Osman Yahya Akıncı — 150230106, Abdullah Akcan — 15022051, Bilge Bostanbaşı — 150230081, Ceyda Akın — 150220096, Zarif Beste Süner — 150220085 |
+| **Group members** | Osman Yahya Akıncı — 150230106, Abdullah Akcan — 150220051, Bilge Bostanbaşı — 150230081, Ceyda Akın — 150220096, Zarif Beste Süner — 150220085 |
 | **Instructor** | Tolga Ovatman, Ayşe Tosun Kühn |
 | **Submission date** | 2026-10-19 |
 | **Document version** | 1.0 |
