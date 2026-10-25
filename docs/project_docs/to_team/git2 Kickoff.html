@@ -1,0 +1,1597 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#faf9f5;color:#141413}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>git2 Kickoff</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@300..700&family=Martian+Mono:wdth,wght@75..112.5,300..800&display=swap">
+<style>
+/* Layout: one 1920×1080 stage scaled to the window. Every slide is a commit; the footer is the commit graph. */
+:root{
+  --ink:#0B0D12;
+  --panel:#11151C;
+  --line:#252C39;
+  --fg:#E7EAF0;
+  --dim:#8D95A5;
+  --faint:#566070;
+  --hash:#F2C55C;      /* git log's commit-hash yellow */
+  --head:#5CCFE6;      /* git log's HEAD cyan */
+  --l-dash:#5CCFE6;    /* Dash plane */
+  --l-admin:#C49CFF;   /* Admin & Identity */
+  --l-git:#F2C55C;     /* Git Core */
+  --l-ci:#7FD892;      /* Pipelines */
+  --l-plat:#FF8A72;    /* Platform & Backup */
+  --ok:#7FD892;
+  --bad:#F25B5B;
+  --mono:"Martian Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --sans:"Geist", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --ease:cubic-bezier(.2,.75,.2,1);
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--ink);color:var(--fg);font-family:var(--sans);overflow:hidden;-webkit-font-smoothing:antialiased}
+.sprite{position:absolute;width:0;height:0;overflow:hidden}
+.viewport{position:fixed;inset:0;overflow:hidden;background:var(--ink)}
+.stage{position:absolute;left:50%;top:50%;width:1920px;height:1080px;transform:translate(-50%,-50%) scale(var(--s,.5));overflow:hidden;background:var(--ink)}
+.ic{display:block;width:48px;height:48px;color:currentColor;flex:none}
+
+/* ---------- slide mechanics ---------- */
+.slide{position:absolute;inset:0;padding:96px 120px 160px;display:flex;flex-direction:column;gap:56px;opacity:0;visibility:hidden;transform:translateX(56px);transition:opacity .4s ease,transform .6s var(--ease),visibility 0s linear .6s}
+.slide.is-past{transform:translateX(-56px)}
+.slide.is-active{opacity:1;visibility:visible;transform:none;transition:opacity .45s ease,transform .6s var(--ease),visibility 0s}
+.is-active .rise{animation:rise .7s var(--ease) both;animation-delay:calc(var(--i,0) * 90ms + 100ms)}
+@keyframes rise{from{opacity:0;transform:translateY(24px)}}
+.is-active .ln-in{animation:lnin .3s ease both;animation-delay:var(--d,0ms)}
+@keyframes lnin{from{opacity:0;transform:translateX(-10px)}}
+.is-active .draw{stroke-dasharray:1;animation:draw 1.2s var(--ease) both;animation-delay:var(--d,0ms)}
+@keyframes draw{from{stroke-dashoffset:1}to{stroke-dashoffset:0}}
+.is-active .pop{animation:pop .45s var(--ease) both;animation-delay:var(--d,0ms);transform-box:fill-box;transform-origin:center}
+@keyframes pop{from{opacity:0;transform:scale(.2)}}
+
+.hd{display:flex;flex-direction:column;gap:20px}
+.eyebrow{font-family:var(--mono);font-size:22px;font-stretch:87.5%;color:var(--dim)}
+.eyebrow b{color:var(--hash);font-weight:500;margin-right:12px}
+.t{margin:0;font-family:var(--mono);font-weight:600;font-size:72px;line-height:1.05;letter-spacing:-.03em;font-stretch:87.5%;text-wrap:balance}
+.t em{font-style:normal;color:var(--hash)}
+code{font-family:var(--mono);font-stretch:87.5%;font-size:.88em;color:var(--fg)}
+
+/* shared svg text + boxes */
+.nb{fill:var(--panel);stroke:var(--c,var(--line));stroke-width:2}
+.nb.ext{fill:none;stroke-dasharray:6 8}
+.nm{font-family:var(--mono);font-size:28px;font-weight:600;font-stretch:87.5%;fill:var(--fg)}
+.sb{font-family:var(--sans);font-size:21px;fill:var(--dim)}
+.st{font-family:var(--mono);font-size:20px;font-stretch:87.5%;fill:var(--dim)}
+.wire{fill:none;stroke:var(--faint);stroke-width:2}
+.gl{fill:none;stroke:var(--c,var(--faint));stroke-width:4;stroke-linecap:round}
+.cm{fill:var(--ink);stroke:var(--c,var(--dim));stroke-width:3}
+.pkt{fill:var(--c,var(--hash))}
+
+/* rotating bucket provider name */
+.cyc{position:relative;display:inline-block;width:10ch;height:1.25em;vertical-align:bottom}
+.cyc span{position:absolute;inset:0;opacity:0;white-space:nowrap}
+.cyc span:first-child{opacity:1}
+.is-active .cyc span{animation:cyc 18s var(--ease) infinite;animation-delay:calc(var(--k) * 2s)}
+@keyframes cyc{0%{opacity:0;transform:translateY(14px)}2%,9.5%{opacity:1;transform:none}11.5%,100%{opacity:0;transform:translateY(-14px)}}
+
+/* ---------- footer: the commit graph ---------- */
+.chrome{position:absolute;left:120px;right:120px;bottom:52px;height:44px;display:flex;align-items:center;gap:28px;font-family:var(--mono);font-size:20px;font-stretch:87.5%;color:var(--dim);z-index:10}
+.brand{color:var(--fg);font-weight:700;font-stretch:112.5%;letter-spacing:-.02em}
+.brand span{color:var(--hash)}
+.commit{flex:1;min-width:0;display:flex;gap:16px;white-space:nowrap;overflow:hidden}
+.commit .sha{color:var(--hash)}
+.headref{color:var(--dim);white-space:nowrap}
+.headref b{color:var(--head);font-weight:600}
+.dots{position:relative;display:flex}
+.dots .rail,.dots .fill{position:absolute;left:15px;top:50%;height:2px;margin-top:-1px;background:var(--line)}
+.dots .rail{right:15px}
+.dots .fill{width:0;background:var(--faint);transition:width .5s var(--ease)}
+.dot{position:relative;width:30px;height:44px;display:grid;place-items:center;padding:0;border:0;background:none;cursor:pointer}
+.dot i{display:block;width:12px;height:12px;border-radius:50%;background:var(--ink);border:2px solid var(--faint);transition:transform .3s var(--ease),background .3s,border-color .3s,box-shadow .3s}
+.dot.done i{background:var(--faint)}
+.dot.now i{background:var(--hash);border-color:var(--hash);transform:scale(1.25);box-shadow:0 0 0 6px rgba(242,197,92,.16)}
+.dot:hover i{border-color:var(--fg)}
+.count{font-variant-numeric:tabular-nums;min-width:80px;text-align:right}
+.count b{color:var(--fg);font-weight:500}
+.navbtn{width:40px;height:40px;border:1px solid var(--line);border-radius:10px;background:none;color:var(--dim);font:inherit;cursor:pointer;display:grid;place-items:center}
+.navbtn:hover{color:var(--fg);border-color:var(--faint)}
+button:focus-visible,input:focus-visible{outline:2px solid var(--hash);outline-offset:3px;border-radius:6px}
+
+/* ---------- 1 · title ---------- */
+.s-title{justify-content:center;gap:40px;padding-right:820px}
+.gitgraph{position:absolute;top:0;right:110px;width:557px;height:940px}
+.hero{margin:0;font-family:var(--mono);font-weight:700;font-size:260px;line-height:.86;letter-spacing:-.05em;font-stretch:112.5%;display:flex;align-items:baseline}
+.hero .two{color:var(--hash)}
+.caret{display:inline-block;width:.36em;height:.7em;margin-left:.12em;background:var(--fg);animation:blink 1.05s steps(1) infinite}
+@keyframes blink{50%{opacity:0}}
+.lead{margin:0;font-size:40px;line-height:1.3;color:var(--dim);max-width:900px;text-wrap:balance}
+.lead b{color:var(--fg);font-weight:500}
+.cmdline{font-family:var(--mono);font-size:30px;font-stretch:87.5%;display:flex;flex-direction:column;gap:10px}
+.cmdline .p{color:var(--hash);margin-right:18px}
+.cmdline .okl{color:var(--ok)}
+.keys{position:absolute;left:120px;bottom:124px;font-family:var(--mono);font-size:20px;font-stretch:87.5%;color:var(--faint);display:flex;gap:28px}
+.keys kbd{font-family:inherit;color:var(--dim);border:1px solid var(--line);border-radius:6px;padding:2px 9px;margin-right:10px}
+
+/* ---------- 2 · promises ---------- */
+.promises{flex:1;display:grid;grid-template-columns:repeat(3,1fr);gap:48px;min-height:0}
+.pr{display:flex;flex-direction:column;gap:26px;min-width:0}
+.scene{position:relative;height:380px;border:1px solid var(--line);border-radius:20px;background:var(--panel);overflow:hidden}
+.pr .k{font-family:var(--mono);font-weight:600;font-size:46px;font-stretch:87.5%;letter-spacing:-.02em;line-height:1}
+.pr .s{font-size:28px;color:var(--dim);margin-top:-10px}
+.loopwrap{position:absolute;inset:0}
+.is-active .loopwrap{animation:loopfade 6s ease infinite}
+@keyframes loopfade{0%{opacity:0}5%,93%{opacity:1}100%{opacity:0}}
+/* install scene */
+.ti-line{position:absolute;left:40px;top:44px;font-family:var(--mono);font-stretch:87.5%;font-size:28px;display:flex;gap:16px;white-space:nowrap}
+.ti-line .p{color:var(--hash)}
+.typ{display:inline-block;overflow:hidden;white-space:nowrap;width:15ch;border-right:3px solid var(--fg);vertical-align:bottom}
+.is-active .typ{animation:typ 6s steps(15,end) infinite}
+@keyframes typ{0%{width:0}26%,100%{width:15ch}}
+.ti-bar{position:absolute;left:40px;right:40px;top:126px;height:14px;border-radius:7px;background:var(--line);overflow:hidden}
+.ti-bar i{display:block;height:100%;width:100%;background:var(--l-plat);border-radius:7px}
+.is-active .ti-bar i{animation:barfill 6s var(--ease) infinite}
+@keyframes barfill{0%,30%{width:0}68%,100%{width:100%}}
+.ti-meta{position:absolute;left:40px;right:40px;top:158px;display:flex;justify-content:space-between;font-family:var(--mono);font-size:20px;font-stretch:87.5%;color:var(--fg)}
+.is-active .ti-meta span:nth-child(1){animation:meta1 6s steps(1) infinite}
+.is-active .ti-meta span:nth-child(2){animation:meta2 6s steps(1) infinite}
+.is-active .ti-meta span:nth-child(3){animation:meta3 6s steps(1) infinite}
+@keyframes meta1{0%,38%{color:var(--faint)}39%,100%{color:var(--fg)}}
+@keyframes meta2{0%,52%{color:var(--faint)}53%,100%{color:var(--fg)}}
+@keyframes meta3{0%,67%{color:var(--faint)}68%,100%{color:var(--ok)}}
+.okring{position:absolute;width:112px;height:112px;border-radius:50%;background:color-mix(in srgb,var(--ok) 16%,transparent);border:2px solid var(--ok);display:grid;place-items:center;color:var(--ok)}
+.okring .ic{width:58px;height:58px}
+.sc-install .okring{left:50%;top:226px;margin-left:-56px}
+.is-active .sc-install .okring{animation:okpop 6s var(--ease) infinite}
+@keyframes okpop{0%,70%{transform:scale(0);opacity:0}76%{transform:scale(1.12);opacity:1}82%,100%{transform:scale(1);opacity:1}}
+/* bucket scene */
+.it{position:absolute;top:40px;left:var(--x);width:72px;height:72px;color:var(--c)}
+.is-active .it{animation:drop 6s var(--ease) infinite;animation-delay:var(--dl)}
+@keyframes drop{0%,10%{transform:none;opacity:1}30%{transform:translate(var(--dx),138px) scale(.35);opacity:1}34%,86%{transform:translate(var(--dx),138px) scale(.35);opacity:0}90%{transform:none;opacity:0}100%{transform:none;opacity:1}}
+.bkt{position:absolute;left:179px;top:170px;width:170px;height:170px;color:var(--l-plat)}
+.lockb{position:absolute;left:236px;top:262px;width:56px;height:56px;border-radius:50%;background:var(--ink);border:2px solid var(--l-plat);display:grid;place-items:center;color:var(--l-plat)}
+.lockb .ic{width:30px;height:30px}
+.is-active .lockb{animation:lockpop 6s var(--ease) infinite}
+@keyframes lockpop{0%,44%{transform:scale(0)}50%{transform:scale(1.18)}55%,100%{transform:scale(1)}}
+.pulse{position:absolute;left:184px;top:196px;width:160px;height:160px;border-radius:50%;border:2px solid var(--l-plat);opacity:0}
+.is-active .pulse{animation:pulse 6s ease-out infinite}
+@keyframes pulse{0%,44%{opacity:0;transform:scale(.6)}48%{opacity:.8}70%,100%{opacity:0;transform:scale(1.7)}}
+/* friendly scene */
+.sc-friendly .mr{position:absolute;inset:36px;display:flex;flex-direction:column;gap:22px}
+.mr-h{display:flex;align-items:center;gap:14px}
+.mr-h .av{width:40px;height:40px;border-radius:50%;background:var(--l-dash)}
+.mr-h b{display:block;height:16px;width:180px;border-radius:8px;background:var(--line)}
+.mr-h b.short{width:80px}
+.df{display:flex;flex-direction:column;gap:12px}
+.df i{display:block;height:16px;border-radius:4px;width:var(--w);background:var(--line);transform-origin:left}
+.df i.add{background:color-mix(in srgb,var(--ok) 45%,transparent)}
+.df i.del{background:color-mix(in srgb,var(--bad) 45%,transparent)}
+.is-active .df i{animation:dfin 6s var(--ease) infinite;animation-delay:calc(var(--k) * 140ms)}
+@keyframes dfin{0%,4%{transform:scaleX(0)}16%,100%{transform:scaleX(1)}}
+.mbtn{position:absolute;right:0;bottom:0;width:200px;height:60px;border-radius:30px;border:2px solid var(--ok);background:var(--ok);color:var(--ink);display:grid;place-items:center;font-family:var(--mono);font-size:24px;font-weight:600;font-stretch:87.5%}
+.mbtn span{grid-area:1/1}
+.mbtn .a{opacity:0}
+.is-active .mbtn{animation:mbtn 6s steps(1) infinite}
+.is-active .mbtn .a{animation:sw1 6s steps(1) infinite}
+.is-active .mbtn .b{animation:sw2 6s steps(1) infinite}
+@keyframes mbtn{0%,55%{background:transparent;border-color:var(--faint);color:var(--fg)}56%,100%{background:var(--ok);border-color:var(--ok);color:var(--ink)}}
+@keyframes sw1{0%,55%{opacity:1}56%,100%{opacity:0}}
+@keyframes sw2{0%,55%{opacity:0}56%,100%{opacity:1}}
+.cur{position:absolute;left:380px;top:309px;width:48px;height:48px;color:var(--fg);transform-origin:12px 5px}
+.is-active .cur{animation:cur 6s var(--ease) infinite}
+@keyframes cur{0%,16%{transform:translate(-240px,-150px);opacity:0}22%{opacity:1}48%{transform:none}53%{transform:scale(.82)}58%{transform:scale(1)}92%{opacity:1;transform:none}100%{opacity:0;transform:none}}
+
+/* ---------- 3 · on-prem ---------- */
+.scenewrap{position:relative}
+.scenewrap svg{display:block;width:100%;height:auto;overflow:visible}
+.netbox{fill:color-mix(in srgb,var(--panel) 55%,transparent);stroke:var(--faint);stroke-width:2;stroke-dasharray:10 10}
+.provlabel{position:absolute;left:1440px;top:402px;width:420px;transform:translateX(-50%);text-align:center;font-family:var(--mono);font-size:32px;font-weight:600;font-stretch:87.5%;display:flex;flex-direction:column;align-items:center;gap:8px}
+.provlabel .cyc{width:10ch}
+.provlabel small{font-size:22px;font-weight:400;color:var(--dim)}
+
+/* ---------- 4 · two planes ---------- */
+.planeswrap{display:flex;flex-direction:column}
+.planes{display:grid;grid-template-columns:1fr 1fr;gap:56px}
+.plane{display:flex;flex-direction:column;gap:18px;min-width:0}
+.win{border:1px solid var(--line);border-radius:18px;background:var(--panel);overflow:hidden;display:flex;flex-direction:column}
+.planes .win{height:380px}
+.win-bar{display:flex;align-items:center;gap:14px;padding:12px 20px;border-bottom:1px solid var(--line);font-family:var(--mono);font-size:20px;font-stretch:87.5%;color:var(--faint);white-space:nowrap}
+.win-bar b{color:var(--c);font-weight:600}
+.win-body{flex:1;position:relative;padding:22px;min-height:0}
+.pcap{display:flex;align-items:baseline;gap:18px}
+.pcap b{font-family:var(--mono);font-size:38px;font-weight:600;color:var(--c);font-stretch:87.5%}
+.pcap span{font-size:28px;color:var(--dim)}
+.dm{display:grid;grid-template-columns:110px 1fr;gap:22px}
+.dm-side{display:flex;flex-direction:column;gap:16px;padding-top:8px}
+.dm-side i{display:block;height:14px;border-radius:7px;background:var(--line)}
+.dm-side i:nth-child(2){width:80%}.dm-side i:nth-child(3){width:92%}.dm-side i:nth-child(4){width:70%}.dm-side i:nth-child(5){width:85%}
+.dm-side i.on{background:var(--c)}
+.dm-main{display:flex;flex-direction:column;gap:16px;min-width:0}
+.dm-head{display:flex;align-items:center;gap:14px}
+.repo{font-family:var(--mono);font-size:24px;font-weight:600;font-stretch:87.5%}
+.chip{font-family:var(--mono);font-size:20px;font-stretch:87.5%;color:var(--c);border:1px solid color-mix(in srgb,var(--c) 60%,transparent);border-radius:20px;padding:2px 12px}
+.dm-mr{border:1px solid var(--line);border-radius:14px;padding:18px 20px;display:flex;flex-direction:column;gap:16px;background:var(--ink)}
+.dm-t{font-size:24px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dm-t b{font-family:var(--mono);color:var(--c);margin-right:10px;font-stretch:87.5%}
+.dm-diff{display:flex;flex-direction:column;gap:10px}
+.dm-diff i{display:block;height:14px;width:var(--w);border-radius:4px;background:var(--line);transform-origin:left}
+.dm-diff i.a{background:color-mix(in srgb,var(--ok) 45%,transparent)}
+.dm-diff i.d{background:color-mix(in srgb,var(--bad) 45%,transparent)}
+.is-active .dm-diff i{animation:dfin 7s var(--ease) infinite;animation-delay:calc(var(--k) * 150ms)}
+.dm-foot{display:flex;align-items:center;justify-content:space-between;gap:16px}
+.pipe{display:flex;align-items:center}
+.pipe i{position:relative;width:22px;height:22px;border-radius:50%;border:2px solid var(--ok);background:var(--ok)}
+.pipe i+i{margin-left:28px}
+.pipe i+i::before{content:"";position:absolute;right:calc(100% + 2px);top:8px;width:26px;height:2px;background:var(--line)}
+.is-active .pipe i{animation:pipeon 7s steps(1) infinite;animation-delay:calc(var(--k) * .45s)}
+@keyframes pipeon{0%,30%{background:var(--ink);border-color:var(--faint)}31%,100%{background:var(--ok);border-color:var(--ok)}}
+.appr{display:grid;place-items:center;font-family:var(--mono);font-size:20px;font-stretch:87.5%;border-radius:20px;padding:6px 18px;border:1px solid var(--c);color:var(--ink);background:var(--c);min-width:170px}
+.appr span{grid-area:1/1}
+.appr .x{opacity:0}
+.is-active .appr{animation:apprbg 7s steps(1) infinite}
+.is-active .appr .x{animation:sw1b 7s steps(1) infinite}
+.is-active .appr .y{animation:sw2b 7s steps(1) infinite}
+@keyframes apprbg{0%,64%{background:transparent;color:var(--c)}65%,100%{background:var(--c);color:var(--ink)}}
+@keyframes sw1b{0%,64%{opacity:1}65%,100%{opacity:0}}
+@keyframes sw2b{0%,64%{opacity:0}65%,100%{opacity:1}}
+.am{display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:16px}
+.tile{border:1px solid var(--line);border-radius:14px;background:var(--ink);padding:16px 20px;display:flex;flex-direction:column;justify-content:space-between;gap:10px;min-width:0}
+.tl{font-family:var(--mono);font-size:20px;font-stretch:87.5%;color:var(--faint)}
+.trow{display:flex;align-items:center;gap:16px;font-family:var(--mono);font-size:22px;font-stretch:87.5%;color:var(--fg)}
+@property --n{syntax:'<integer>';inherits:false;initial-value:128}
+.cnt{--n:128;counter-reset:n var(--n);font-family:var(--mono);font-size:56px;font-weight:600;font-stretch:87.5%;line-height:1}
+.cnt::after{content:counter(n)}
+.is-active .cnt{animation:count 7s var(--ease) infinite}
+@keyframes count{0%{--n:0}35%,100%{--n:128}}
+.sw{position:relative;width:84px;height:44px;border-radius:22px;background:var(--c);flex:none}
+.sw i{position:absolute;top:5px;left:45px;width:34px;height:34px;border-radius:50%;background:var(--fg)}
+.is-active .sw{animation:swbg 7s steps(1) infinite}
+.is-active .sw i{animation:swk 7s var(--ease) infinite}
+@keyframes swbg{0%,42%{background:var(--line)}43%,100%{background:var(--c)}}
+@keyframes swk{0%,38%{left:5px}46%,100%{left:45px}}
+.rdots{display:flex;gap:12px}
+.rdots i{width:22px;height:22px;border-radius:50%;background:var(--ok)}
+.is-active .rdots i{animation:rpulse 1.8s ease-in-out infinite;animation-delay:calc(var(--k) * .25s)}
+@keyframes rpulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.35;transform:scale(.75)}}
+.days{display:flex;align-items:flex-end;gap:7px;height:44px}
+.days i{width:20px;height:100%;border-radius:4px;background:color-mix(in srgb,var(--l-plat) 45%,transparent);transform-origin:bottom}
+.days i:last-child{background:var(--l-plat)}
+.is-active .days i{animation:dayin 7s var(--ease) infinite;animation-delay:calc(var(--k) * 110ms)}
+@keyframes dayin{0%,5%{transform:scaleY(0)}16%,100%{transform:scaleY(1)}}
+.links{position:relative;height:40px}
+.links i{position:absolute;top:0;bottom:0;width:2px;background:var(--line)}
+.links i::after{content:"";position:absolute;left:-4px;top:0;width:10px;height:10px;border-radius:50%;background:var(--c)}
+.is-active .links i::after{animation:linkdot 1.6s ease-in infinite}
+@keyframes linkdot{0%{transform:translateY(-6px);opacity:0}20%{opacity:1}100%{transform:translateY(34px);opacity:0}}
+.core{display:flex;align-items:center;gap:14px;padding:16px 24px;border:1px solid var(--faint);border-radius:18px;background:var(--panel);flex-wrap:wrap}
+.core-l{font-family:var(--mono);font-size:22px;font-stretch:87.5%;color:var(--dim);margin-right:10px}
+.cchip{display:inline-flex;align-items:center;gap:10px;font-family:var(--mono);font-size:22px;font-stretch:87.5%;padding:6px 14px;border-radius:10px;border:1px solid color-mix(in srgb,var(--c,var(--faint)) 60%,transparent);color:var(--fg);white-space:nowrap}
+.cchip .ic{width:26px;height:26px;color:var(--c,var(--dim))}
+.core .sep{flex:1}
+
+/* ---------- 5 · architecture ---------- */
+.arch{display:block;width:100%;height:auto;overflow:visible}
+.depname{font-family:var(--mono);font-size:32px;font-weight:600;font-stretch:87.5%;fill:var(--fg)}
+
+/* ---------- 6 · one or many ---------- */
+.morph{position:relative;height:560px}
+.shell{position:absolute;left:440px;top:20px;width:800px;height:300px;border:2px solid var(--fg);border-radius:22px;background:var(--panel);font-family:var(--mono);font-size:24px;font-stretch:87.5%;transition:opacity .6s,transform .8s var(--ease)}
+.shell>div{position:absolute;top:22px;left:26px;display:flex;align-items:center;gap:14px}
+.shell .ic{width:34px;height:34px}
+.node{position:absolute;top:20px;width:520px;height:300px;border:1.5px dashed var(--faint);border-radius:22px;padding:22px 26px;font-family:var(--mono);font-size:22px;font-stretch:87.5%;color:var(--dim);opacity:0;transform:scale(.96);transition:opacity .6s,transform .8s var(--ease)}
+.morph[data-mode="many"] .shell{opacity:0;transform:scale(1.05)}
+.morph[data-mode="many"] .node{opacity:1;transform:none}
+.mc{position:absolute;left:var(--ax);top:var(--ay);width:230px;height:64px;border-radius:14px;border:1.5px solid var(--c);background:color-mix(in srgb,var(--c) 12%,var(--ink));display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:24px;font-weight:600;font-stretch:87.5%;transition:left .9s var(--ease),top .9s var(--ease),opacity .5s}
+.morph[data-mode="many"] .mc{left:var(--bx);top:var(--by)}
+.mc.rep{opacity:0}
+.morph[data-mode="many"] .mc.rep{opacity:1;transition-delay:.12s}
+.mdeps{position:absolute;left:0;right:0;top:350px;display:flex;justify-content:center;align-items:center;gap:18px;font-family:var(--mono);font-size:28px;color:var(--faint)}
+.modes{position:absolute;left:50%;top:440px;transform:translateX(-50%);display:flex;gap:16px;padding:8px;border:1px solid var(--line);border-radius:20px;background:var(--panel)}
+.mode{appearance:none;border:1px solid transparent;background:none;border-radius:14px;padding:12px 26px;display:flex;flex-direction:column;align-items:flex-start;gap:4px;cursor:pointer;color:var(--dim);font-family:var(--sans);font-size:22px;transition:background .4s,border-color .4s,color .4s;min-width:380px}
+.mode code{font-size:26px;color:inherit}
+.morph[data-mode="one"] .mode[data-m="one"],.morph[data-mode="many"] .mode[data-m="many"]{background:var(--ink);border-color:var(--hash);color:var(--fg)}
+.morph[data-mode="one"] .mode[data-m="one"] code,.morph[data-mode="many"] .mode[data-m="many"] code{color:var(--hash)}
+
+/* ---------- 7 · install ---------- */
+.install{flex:1;display:grid;grid-template-columns:780px 1fr;gap:48px;align-items:start;min-height:0}
+.term{background:var(--panel);border:1px solid var(--line);border-radius:16px;overflow:hidden;display:flex;flex-direction:column}
+.term-bar{display:flex;justify-content:space-between;padding:12px 28px;border-bottom:1px solid var(--line);font-family:var(--mono);font-size:20px;font-stretch:87.5%;color:var(--faint)}
+.term-body{padding:30px 36px 34px;font-family:var(--mono);font-stretch:87.5%;font-size:27px;line-height:1.6;display:flex;flex-direction:column;gap:8px}
+.term-body .p{color:var(--hash);margin-right:18px}
+.il{display:flex;align-items:center;gap:18px;white-space:nowrap}
+.il .dim{color:var(--dim)}
+.slot{position:relative;width:28px;height:28px;flex:none}
+.slot .spin,.slot .ok{position:absolute;inset:0}
+.slot .spin{border:3px solid var(--line);border-top-color:var(--hash);border-radius:50%;opacity:0}
+.slot .ok{color:var(--ok);display:grid;place-items:center}
+.slot .ok .ic{width:28px;height:28px}
+.is-active .slot .spin{animation:spinr .8s linear infinite,gone .01s linear both;animation-delay:0s,calc(var(--d) + 700ms)}
+.is-active .slot .ok{animation:okshow .25s ease both;animation-delay:calc(var(--d) + 700ms)}
+@keyframes spinr{to{transform:rotate(360deg)}}
+@keyframes gone{from{opacity:1}to{opacity:0}}
+@keyframes okshow{from{opacity:0;transform:scale(.4)}to{opacity:1;transform:none}}
+.il .ar{color:var(--hash);width:28px;text-align:center}
+.il u{text-decoration-color:var(--faint);text-underline-offset:5px}
+.wiz{height:470px}
+.wiz .win-body{display:flex;flex-direction:column;gap:30px;padding:34px 40px}
+.stepper{display:flex;align-items:flex-start}
+.sc{display:flex;flex-direction:column;align-items:center;gap:8px;font-family:var(--mono);font-size:20px;font-stretch:87.5%;color:var(--faint)}
+.sc i{width:48px;height:48px;border-radius:50%;border:2px solid var(--faint);display:grid;place-items:center;font-style:normal;font-size:20px;transition:all .3s}
+.stepper b{flex:1;height:2px;background:var(--line);margin:23px 14px 0;position:relative}
+.stepper b::after{content:"";position:absolute;inset:0;background:var(--hash);transform:scaleX(0);transform-origin:left;transition:transform .5s var(--ease)}
+.wiz[data-step="1"] .sc[data-n="1"] i,.wiz[data-step="2"] .sc[data-n="2"] i,.wiz[data-step="3"] .sc[data-n="3"] i{border-color:var(--hash);color:var(--hash)}
+.wiz[data-step="1"] .sc[data-n="1"],.wiz[data-step="2"] .sc[data-n="2"],.wiz[data-step="3"] .sc[data-n="3"]{color:var(--fg)}
+.wiz[data-step="2"] .sc[data-n="1"] i,.wiz[data-step="3"] .sc[data-n="1"] i,.wiz[data-step="3"] .sc[data-n="2"] i,.wiz[data-step="4"] .sc i{background:var(--hash);border-color:var(--hash);color:var(--ink)}
+.wiz[data-step="2"] .stepper b:nth-of-type(1)::after,.wiz[data-step="3"] .stepper b::after,.wiz[data-step="4"] .stepper b::after{transform:none}
+.field{display:flex;flex-direction:column;gap:12px}
+.field .lb{display:none;font-size:24px;color:var(--dim)}
+.inp{height:64px;border:1.5px solid var(--faint);border-radius:12px;padding:0 20px;display:flex;align-items:center;font-family:var(--mono);font-size:26px;font-stretch:87.5%}
+.inp .v{display:none;overflow:hidden;white-space:nowrap;width:var(--w)}
+.wiz[data-step="1"] .lb1,.wiz[data-step="2"] .lb2,.wiz[data-step="3"] .lb3{display:block}
+.wiz[data-step="1"] .v1,.wiz[data-step="2"] .v2,.wiz[data-step="3"] .v3{display:inline-block;animation:typw .9s steps(14,end) both .2s}
+@keyframes typw{from{width:0}to{width:var(--w)}}
+.next{align-self:flex-end;font-family:var(--mono);font-size:22px;font-stretch:87.5%;padding:12px 24px;border-radius:12px;background:var(--hash);color:var(--ink);font-weight:600}
+.ready{display:none;flex-direction:column;align-items:center;gap:22px;padding-top:10px;font-family:var(--mono);font-size:32px;font-weight:600;font-stretch:87.5%}
+.wiz[data-step="4"] .ready{display:flex;animation:rise .6s var(--ease) both}
+.wiz[data-step="4"] .field,.wiz[data-step="4"] .next{display:none}
+.wiz[data-step="0"] .next{opacity:.3}
+
+/* ---------- 8 · backup ---------- */
+.bk{display:flex;flex-direction:column;gap:24px}
+.bk svg{display:block;width:100%;height:auto;overflow:visible}
+.srv{fill:var(--panel);stroke:var(--faint);stroke-width:2;transition:stroke .4s}
+.srvB .srv{stroke-dasharray:10 10}
+.tr{fill:var(--ink);stroke:var(--line);stroke-width:1.5}
+.tr.empty{fill:none;stroke:var(--line);stroke-dasharray:6 8}
+.tlab{font-family:var(--mono);font-size:20px;font-stretch:87.5%;fill:var(--dim)}
+.tiles{transition:opacity .4s}
+.bline{fill:none;stroke:var(--l-plat);stroke-width:3}
+.snap{fill:color-mix(in srgb,var(--l-plat) 18%,var(--panel));stroke:var(--l-plat);stroke-width:1.5}
+.snaptx{font-family:var(--mono);font-size:20px;font-stretch:87.5%;fill:var(--fg)}
+.snapnew{transform-box:fill-box;transform-origin:left center;transform:scaleX(0);transition:transform .6s var(--ease) .9s}
+.bk.p1 .snapnew{transform:none}
+.cl{transform-box:fill-box;transform-origin:center}
+.cl.up{transform:none;opacity:1;transition:transform 1s var(--ease) var(--td),opacity .3s linear calc(var(--td) + .8s)}
+.bk.p1 .cl.up{transform:translate(var(--dx),var(--dy)) scale(.3);opacity:0}
+.cl.dn{transform:translate(var(--dx),var(--dy)) scale(.3);opacity:0;transition:transform 1s var(--ease) var(--td),opacity .2s linear var(--td)}
+.bk.p3 .cl.dn{transform:none;opacity:1}
+.bk.p2 .srvA .srv{stroke:var(--bad)}
+.bk.p2 .srvA .tiles{opacity:.18}
+.failx,.oktag,.waittag{opacity:0;transition:opacity .3s}
+.runtag{transition:opacity .3s}
+.bk.p2 .failx{opacity:1}
+.bk.p2 .runtag{opacity:0}
+.bk.p4 .srvB .srv{stroke:var(--ok);stroke-dasharray:none}
+.bk.p4 .oktag{opacity:1}
+.bk:not(.p4) .waittag{opacity:1}
+.bkcmds{display:flex;flex-direction:column;gap:8px;font-family:var(--mono);font-size:28px;font-stretch:87.5%}
+.bkcmds div{opacity:.3;transition:opacity .4s}
+.bkcmds .p{color:var(--hash);margin-right:18px}
+.bk:not(.p3) .c1,.bk.p3 .c2{opacity:1}
+.bk.reset *{transition:none !important}
+
+/* ---------- 9 · push flow ---------- */
+.flow{display:flex;flex-direction:column;gap:36px}
+.flow svg{display:block;width:100%;height:auto;overflow:visible}
+.node2 rect{fill:var(--panel);stroke:var(--line);stroke-width:2;transition:fill .4s,stroke .4s}
+.node2.lit rect{stroke:var(--c)}
+.node2.now rect{stroke:var(--c);fill:color-mix(in srgb,var(--c) 16%,var(--panel))}
+.node2 .nm{font-size:24px}
+.node2 .sb{font-size:20px;transition:fill .4s}
+.node2.now .sb{fill:var(--fg)}
+.edge{fill:none;stroke:var(--line);stroke-width:3;transition:stroke .3s}
+.edge.hot{stroke:var(--hash)}
+#pk{fill:var(--hash)}
+.steps{display:grid;grid-template-columns:repeat(4,1fr);gap:20px 36px}
+.step{appearance:none;background:none;border:0;border-top:2px solid var(--line);padding:14px 0 0;margin:0;text-align:left;color:var(--dim);font-family:var(--sans);font-size:24px;line-height:1.35;cursor:pointer;display:flex;flex-direction:column;gap:6px;transition:color .3s,border-color .3s}
+.step .no{font-family:var(--mono);font-size:20px;font-stretch:87.5%;color:var(--faint);transition:color .3s}
+.step.done{color:var(--fg);border-color:var(--faint)}
+.step.now{color:var(--fg);border-color:var(--hash)}
+.step.now .no{color:var(--hash)}
+
+/* ---------- 10 · owners ---------- */
+.owners{flex:1;display:grid;grid-template-columns:repeat(6,1fr);grid-template-rows:auto 1fr auto 1fr;gap:14px 24px;min-height:0}
+.tier{grid-column:1/-1;font-family:var(--mono);font-size:20px;font-stretch:87.5%;color:var(--faint);letter-spacing:.1em;text-transform:uppercase;display:flex;align-items:center;gap:16px}
+.tier::after{content:"";flex:1;height:1px;background:var(--line)}
+.ob{grid-column:span 2;position:relative;border:1px solid var(--line);border-radius:20px;background:var(--panel);padding:24px 28px 20px;display:grid;grid-template-columns:64px 1fr;grid-template-rows:auto auto 1fr auto;column-gap:22px;row-gap:12px;transition:border-color .4s,box-shadow .4s,transform .4s var(--ease);min-width:0}
+.ob.plane{grid-column:span 3}
+.ob>.ic{grid-row:1/3;width:64px;height:64px;color:var(--c);transition:transform .4s var(--ease)}
+.ob .nm2{font-family:var(--mono);font-size:32px;font-weight:600;font-stretch:87.5%;letter-spacing:-.02em;color:var(--c);white-space:nowrap}
+.ob .chips{display:flex;flex-wrap:wrap;gap:8px}
+.svcchip{font-family:var(--mono);font-size:20px;font-stretch:87.5%;padding:3px 12px;border-radius:8px;border:1px solid color-mix(in srgb,var(--c) 55%,transparent);color:var(--fg)}
+.ob .tags{grid-column:1/-1;font-size:24px;color:var(--dim);align-self:center}
+.ob .owner{grid-column:1/-1;display:flex;align-items:center;gap:14px;border-top:1px solid var(--line);padding-top:12px}
+.ob .owner label{font-family:var(--mono);font-size:20px;font-stretch:87.5%;color:var(--faint)}
+.ob .owner input{flex:1;min-width:0;background:transparent;border:0;color:var(--fg);font-family:var(--sans);font-size:28px;font-weight:500;padding:2px 0}
+.ob .owner input::placeholder{color:var(--faint)}
+.ob.spot{border-color:var(--c);box-shadow:0 0 0 1px var(--c),0 0 60px -16px var(--c);transform:translateY(-4px)}
+.ob.spot>.ic{transform:scale(1.12)}
+
+/* ---------- 11 · nine weeks ---------- */
+.seg{font-family:var(--sans);font-size:20px;fill:var(--fg)}
+.lane-n{font-family:var(--sans);font-size:23px;font-weight:600}
+.mtag{font-family:var(--mono);font-size:22px;font-weight:600;font-stretch:87.5%;fill:var(--hash)}
+.mname{font-family:var(--sans);font-size:20px;fill:var(--dim)}
+.wkx{font-family:var(--mono);font-size:20px;font-stretch:87.5%;fill:var(--faint)}
+.grid9{stroke:var(--line);stroke-width:1}
+.sync{stroke:var(--faint);stroke-width:1.5;stroke-dasharray:4 7}
+.w9band{fill:none;stroke:var(--hash);stroke-opacity:.6;stroke-width:1.5;stroke-dasharray:6 8}
+.w9t{font-family:var(--mono);font-size:21px;font-stretch:87.5%;fill:var(--hash)}
+.playhead{opacity:0}
+.is-active .playhead{animation:sweep 3s var(--ease) .4s both}
+@keyframes sweep{0%{transform:translateX(0);opacity:0}8%{opacity:.9}88%{opacity:.9}100%{transform:translateX(1450px);opacity:0}}
+
+/* ---------- 12 · demo reel ---------- */
+.reel{flex:1;display:grid;grid-template-columns:repeat(6,1fr);gap:20px;align-content:center}
+.rc{display:flex;flex-direction:column;gap:14px;min-width:0}
+.mini{position:relative;height:250px;border:1px solid var(--line);border-radius:16px;background:var(--panel);overflow:hidden}
+.rc .tg{font-family:var(--mono);font-size:20px;font-stretch:87.5%;color:var(--hash)}
+.rc .tg span{color:var(--faint);margin-left:8px}
+.rc .nmx{font-size:28px;font-weight:600;line-height:1.15}
+.rc .sbx{font-size:22px;color:var(--dim);line-height:1.3}
+/* m0 sign in */
+.m0 .form{position:absolute;inset:0;opacity:.12}
+.m0 .f{position:absolute;left:34px;right:34px;height:32px;border:1.5px solid var(--faint);border-radius:8px}
+.m0 .f::after{content:"";position:absolute;left:12px;top:11px;height:8px;width:60%;border-radius:4px;background:var(--dim)}
+.m0 .f1{top:44px}.m0 .f2{top:92px}
+.m0 .b{position:absolute;left:34px;right:34px;top:146px;height:36px;border-radius:8px;background:var(--hash)}
+.m0 .okring{left:50%;top:50%;margin:-48px 0 0 -48px;width:96px;height:96px}
+.m0 .okring .ic{width:48px;height:48px}
+.is-active .m0 .form{animation:formfade 5s ease infinite}
+.is-active .m0 .f::after{animation:ffill 5s ease infinite}
+.is-active .m0 .f2::after{animation-delay:.5s}
+.is-active .m0 .b{animation:bpress 5s ease infinite}
+.is-active .m0 .okring{animation:okc 5s var(--ease) infinite}
+@keyframes formfade{0%,50%{opacity:1}56%,94%{opacity:.12}100%{opacity:1}}
+@keyframes ffill{0%,8%{width:0}30%,100%{width:60%}}
+@keyframes bpress{0%,38%{transform:scale(1)}42%{transform:scale(.92)}46%,100%{transform:scale(1)}}
+@keyframes okc{0%,54%{transform:scale(0);opacity:0}60%{transform:scale(1.12);opacity:1}64%,92%{transform:scale(1);opacity:1}100%{transform:scale(1);opacity:0}}
+/* m1 push & browse */
+.m1 .cmd{position:absolute;left:24px;top:22px;font-family:var(--mono);font-size:20px;font-stretch:87.5%;white-space:nowrap}
+.m1 .cmd b{color:var(--hash);font-weight:500;margin-right:10px}
+.m1 .cmd .tt{display:inline-block;overflow:hidden;width:8ch;vertical-align:bottom}
+.is-active .m1 .cmd .tt{animation:typ8 5s steps(8,end) infinite}
+@keyframes typ8{0%{width:0}18%,100%{width:8ch}}
+.m1 .rows{position:absolute;left:24px;right:24px;top:72px;display:flex;flex-direction:column;gap:14px}
+.m1 .rows i{display:flex;gap:12px;align-items:center;height:22px}
+.m1 .rows i::before{content:"";width:22px;height:22px;border-radius:5px;background:color-mix(in srgb,var(--l-git) 60%,transparent);flex:none}
+.m1 .rows i::after{content:"";height:10px;border-radius:5px;background:var(--line);width:var(--w)}
+.is-active .m1 .rows i{animation:rowin 5s var(--ease) infinite;animation-delay:calc(var(--k) * .3s)}
+@keyframes rowin{0%,20%{opacity:0;transform:translateX(-18px)}30%,92%{opacity:1;transform:none}100%{opacity:0}}
+/* m2 review & merge */
+.m2 .dfx{position:absolute;left:24px;right:24px;top:28px;display:flex;flex-direction:column;gap:12px}
+.m2 .dfx i{display:block;height:14px;border-radius:4px;width:var(--w);transform-origin:left;background:color-mix(in srgb,var(--ok) 45%,transparent)}
+.m2 .dfx i.d{background:color-mix(in srgb,var(--bad) 45%,transparent)}
+.is-active .m2 .dfx i{animation:dfin 5s var(--ease) infinite;animation-delay:calc(var(--k) * .15s)}
+.m2 .pill{position:absolute;right:24px;bottom:26px;display:grid;place-items:center;width:150px;height:48px;border-radius:24px;border:2px solid var(--ok);background:var(--ok);color:var(--ink);font-family:var(--mono);font-size:20px;font-weight:600;font-stretch:87.5%}
+.m2 .pill span{grid-area:1/1}
+.m2 .pill .a{opacity:0}
+.is-active .m2 .pill{animation:mbtn 5s steps(1) infinite}
+.is-active .m2 .pill .a{animation:sw1 5s steps(1) infinite}
+.is-active .m2 .pill .b{animation:sw2 5s steps(1) infinite}
+/* m3 green pipeline */
+.m3 .pp{position:absolute;left:0;right:0;top:78px;display:flex;justify-content:center}
+.m3 .pp i{position:relative;width:32px;height:32px;border-radius:50%;border:2px solid var(--ok);background:var(--ok)}
+.m3 .pp i+i{margin-left:24px}
+.m3 .pp i+i::before{content:"";position:absolute;right:calc(100% + 2px);top:13px;width:22px;height:2px;background:var(--line)}
+.is-active .m3 .pp i{animation:pp 5s steps(1) infinite;animation-delay:calc(var(--k) * .45s)}
+@keyframes pp{0%,14%{background:var(--ink);border-color:var(--faint)}15%,93%{background:var(--ok);border-color:var(--ok)}94%,100%{background:var(--ink);border-color:var(--faint)}}
+.m3 .pass{position:absolute;left:0;right:0;top:142px;text-align:center;font-family:var(--mono);font-size:22px;font-stretch:87.5%;color:var(--ok)}
+.is-active .m3 .pass{animation:appear 5s ease infinite}
+@keyframes appear{0%,62%{opacity:0}68%,92%{opacity:1}100%{opacity:0}}
+/* m4 restore */
+.m4 .ic{position:absolute;top:84px;width:64px;height:64px}
+.m4 .bi{left:30px;color:var(--l-plat)}
+.m4 .si{right:30px;color:var(--ok)}
+.is-active .m4 .si{animation:srvok 5s ease infinite}
+@keyframes srvok{0%,64%{color:var(--faint)}68%,94%{color:var(--ok)}100%{color:var(--faint)}}
+.m4 .tr2{position:absolute;left:106px;right:106px;top:115px;height:2px;background:var(--line)}
+.m4 .tr2 i{position:absolute;top:-4px;left:0;width:10px;height:10px;border-radius:50%;background:var(--l-plat);opacity:0}
+.is-active .m4 .tr2 i{animation:mv 1.4s linear infinite;animation-delay:calc(var(--k) * .45s)}
+@keyframes mv{0%{transform:translateX(0);opacity:0}15%{opacity:1}85%{opacity:1}100%{transform:translateX(42px);opacity:0}}
+/* w9 demo */
+.m5{display:grid;place-items:center}
+.m5 .big{font-family:var(--mono);font-size:56px;font-weight:700;font-stretch:112.5%;letter-spacing:-.04em;position:relative;z-index:1}
+.m5 .big span{color:var(--hash)}
+.m5 .halo{position:absolute;left:50%;top:50%;width:150px;height:150px;margin:-75px 0 0 -75px;border-radius:50%;border:2px solid var(--hash);opacity:0}
+.is-active .m5 .halo{animation:halo 2.4s ease-out infinite}
+.is-active .m5 .halo.h2{animation-delay:1.2s}
+@keyframes halo{0%{transform:scale(.5);opacity:.8}100%{transform:scale(1.5);opacity:0}}
+.m5 .live{position:absolute;left:18px;top:16px;font-family:var(--mono);font-size:20px;font-stretch:87.5%;color:var(--bad);display:flex;align-items:center;gap:8px}
+.m5 .live::before{content:"";width:10px;height:10px;border-radius:50%;background:var(--bad)}
+.is-active .m5 .live::before{animation:rpulse 1.2s ease-in-out infinite}
+
+/* ---------- 13 · stack ---------- */
+.stackcol{display:flex;flex-direction:column;gap:22px}
+.lbl2{font-family:var(--mono);font-size:20px;font-stretch:87.5%;color:var(--faint);letter-spacing:.1em;text-transform:uppercase}
+.runrow{display:flex;align-items:center;gap:28px}
+.rt{display:flex;align-items:center;gap:22px;padding:20px 30px;border:1px solid var(--line);border-radius:20px;background:var(--panel)}
+.rt .ic{width:72px;height:72px;color:var(--c)}
+.rt .n{font-family:var(--mono);font-size:34px;font-weight:600;font-stretch:87.5%;line-height:1.2}
+.rt .s{font-size:22px;color:var(--dim)}
+.plus{font-family:var(--mono);font-size:52px;color:var(--faint)}
+.inside{display:grid;grid-template-columns:repeat(5,1fr);gap:14px}
+.ins{border:1px solid var(--line);border-radius:14px;padding:14px 20px;display:flex;flex-direction:column;gap:4px;min-width:0}
+.ins .r{font-family:var(--mono);font-size:20px;font-stretch:87.5%;color:var(--faint)}
+.ins .v{font-family:var(--mono);font-size:26px;font-weight:600;font-stretch:87.5%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.out{display:flex;gap:16px;flex-wrap:wrap}
+.oc{display:flex;align-items:baseline;gap:12px;padding:10px 18px;border:1px dashed var(--line);border-radius:12px}
+.oc b{position:relative;font-family:var(--mono);font-size:24px;font-weight:500;font-stretch:87.5%;color:var(--faint)}
+.oc b::after{content:"";position:absolute;left:-4px;right:-4px;top:55%;height:2px;background:var(--bad);transform-origin:left}
+.is-active .oc b::after{animation:strike .5s var(--ease) both;animation-delay:calc(var(--k) * 160ms + 1100ms)}
+@keyframes strike{from{transform:scaleX(0)}}
+.oc span{font-size:22px;color:var(--dim)}
+
+/* ---------- 14 · claude ---------- */
+.claudewrap{flex:1;display:grid;grid-template-columns:760px 1fr;gap:64px;min-height:0;align-items:center}
+.loop{display:block;width:100%;height:auto;overflow:visible}
+.ring{fill:none;stroke:var(--line);stroke-width:3}
+.ringhot{fill:none;stroke:var(--faint);stroke-width:3}
+.stn{fill:var(--ink);stroke:var(--fg);stroke-width:3}
+.ll{font-family:var(--mono);font-size:24px;font-weight:600;font-stretch:87.5%;fill:var(--fg)}
+.ls{font-family:var(--sans);font-size:20px;fill:var(--dim)}
+.lc{font-family:var(--mono);font-size:30px;font-weight:600;font-stretch:87.5%;fill:var(--hash)}
+.rules{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:30px}
+.rules li{display:grid;grid-template-columns:48px 1fr;font-size:30px;line-height:1.3}
+.rules li::before{content:"→";font-family:var(--mono);color:var(--hash)}
+.rules li span{color:var(--dim)}
+.rhythm{display:grid;grid-template-columns:repeat(3,1fr);gap:40px}
+.rh{border-top:1px solid var(--line);padding-top:18px;display:flex;flex-direction:column;gap:6px}
+.rh .k{font-family:var(--mono);font-size:21px;font-stretch:87.5%;color:var(--hash)}
+.rh .v{font-size:25px}
+
+/* ---------- 15 · week 1 ---------- */
+.w1{display:flex;flex-direction:column}
+.w1row{display:grid;grid-template-columns:52px 320px 1fr;align-items:center;gap:20px;padding:20px 0;border-top:1px solid var(--line)}
+.w1row:last-child{border-bottom:1px solid var(--line)}
+.chk{appearance:none;width:34px;height:34px;padding:0;border:2px solid var(--faint);border-radius:8px;background:none;cursor:pointer;display:grid;place-items:center;transition:background .2s,border-color .2s}
+.chk:hover{border-color:var(--fg)}
+.chk[aria-pressed="true"]{background:var(--hash);border-color:var(--hash)}
+.chk[aria-pressed="true"]::after{content:"";width:15px;height:8px;border-left:3px solid var(--ink);border-bottom:3px solid var(--ink);transform:translateY(-2px) rotate(-45deg)}
+.w1row .ln{font-family:var(--mono);font-size:24px;font-stretch:87.5%;color:var(--c)}
+.w1row .tk{font-size:32px}
+.w1row.done .tk{color:var(--dim);text-decoration:line-through;text-decoration-color:var(--faint)}
+
+/* ---------- 16 · kickoff ---------- */
+.s-end{justify-content:center;gap:72px}
+.endterm{font-family:var(--mono);font-size:34px;font-stretch:87.5%;line-height:1.65}
+.endterm .p{color:var(--hash);margin-right:20px}
+.endterm .o{color:var(--dim)}
+.endterm .sha{color:var(--hash)}
+.endterm .caret{height:.9em;width:.5em;vertical-align:-.12em;margin-left:6px}
+.stretch{display:flex;flex-direction:column;gap:18px}
+.stretch .k{font-family:var(--mono);font-size:22px;font-stretch:87.5%;color:var(--dim)}
+.stretch .big{margin:0;font-family:var(--mono);font-weight:700;font-size:120px;line-height:1;letter-spacing:-.04em}
+.stretch .big span{color:var(--hash)}
+
+@media (prefers-reduced-motion: reduce){
+  .slide,.slide.is-active,.slide.is-past{transition:none;transform:none}
+  .is-active *,.is-active *::before,.is-active *::after{animation:none !important}
+  .caret{animation:none}
+  .pkt,.trav{display:none}
+}
+</style>
+
+<svg class="sprite" aria-hidden="true" focusable="false">
+  <defs>
+    <symbol id="i-db" viewBox="0 0 48 48"><g fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="24" cy="11" rx="15" ry="5"/><path d="M9 11v26c0 2.8 6.7 5 15 5s15-2.2 15-5V11"/><path d="M9 24c0 2.8 6.7 5 15 5s15-2.2 15-5"/></g></symbol>
+    <symbol id="i-repo" viewBox="0 0 48 48"><g fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="15" cy="10" r="4.5"/><circle cx="15" cy="38" r="4.5"/><circle cx="33" cy="18" r="4.5"/><path d="M15 14.5v19M33 22.5c0 8-18 5-18 11"/></g></symbol>
+    <symbol id="i-cfg" viewBox="0 0 48 48"><g fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5h17l9 9v29H12z"/><path d="M29 5v9h9"/><path d="M18 23h14M18 29h14M18 35h9"/></g></symbol>
+    <symbol id="i-lock" viewBox="0 0 48 48"><g fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><rect x="10" y="21" width="28" height="21" rx="4"/><path d="M16 21v-6a8 8 0 0 1 16 0v6"/><path d="M24 29v5"/></g></symbol>
+    <symbol id="i-bucket" viewBox="0 0 48 48"><g fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="24" cy="12" rx="17" ry="5"/><path d="M7 12l4 27c.4 2.5 6 4 13 4s12.6-1.5 13-4l4-27"/></g></symbol>
+    <symbol id="i-server" viewBox="0 0 48 48"><g fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="7" width="34" height="14" rx="3"/><rect x="7" y="27" width="34" height="14" rx="3"/></g><g stroke="currentColor" stroke-width="4" stroke-linecap="round"><path d="M14 14h.01M20 14h.01M14 34h.01M20 34h.01"/></g></symbol>
+    <symbol id="i-user" viewBox="0 0 48 48"><g fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="24" cy="16" r="7.5"/><path d="M9 42c0-8.5 6.7-14 15-14s15 5.5 15 14"/></g></symbol>
+    <symbol id="i-shield" viewBox="0 0 48 48"><g fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M24 5l15 6v11c0 10-6.5 17-15 21C15.5 39 9 32 9 22V11z"/><path d="M17 24l5 5 9-10"/></g></symbol>
+    <symbol id="i-box" viewBox="0 0 48 48"><g fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M24 5l17 9v20l-17 9-17-9V14z"/><path d="M7 14l17 9 17-9M24 23v20"/></g></symbol>
+    <symbol id="i-dash" viewBox="0 0 48 48"><g fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="8" width="36" height="32" rx="4"/><path d="M6 16h36M17 16v24M23 24h13M23 31h9"/></g></symbol>
+    <symbol id="i-pipe" viewBox="0 0 48 48"><g fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="24" r="5"/><circle cx="24" cy="24" r="5"/><circle cx="39" cy="24" r="5"/><path d="M14 24h5M29 24h5"/></g></symbol>
+    <symbol id="i-check" viewBox="0 0 48 48"><path d="M11 25l9 9 18-19" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-cursor" viewBox="0 0 48 48"><path d="M12 5l25 18-11 2.5 6.5 13-5 2.5-6.5-13L12 36z" fill="currentColor" stroke="#0B0D12" stroke-width="2" stroke-linejoin="round"/></symbol>
+  </defs>
+</svg>
+
+<div class="viewport">
+<main class="stage" id="stage" aria-roledescription="slide deck" aria-label="git2 kickoff">
+
+<!-- 1 · title -->
+<section class="slide s-title is-active" data-sha="9c1e07a" data-msg="init: git2" aria-label="git2">
+  <svg class="gitgraph" viewBox="0 0 640 1080" aria-hidden="true">
+    <path class="gl draw" pathLength="1" style="--d:0ms" d="M60 0 L60 1080"/>
+    <path class="gl draw" pathLength="1" style="--c:var(--l-plat);--d:250ms" d="M60 90 C60 150 560 130 560 210 L560 880 C560 960 60 940 60 1010"/>
+    <path class="gl draw" pathLength="1" style="--c:var(--l-ci);--d:400ms" d="M60 160 C60 220 460 200 460 280 L460 810 C460 890 60 870 60 940"/>
+    <path class="gl draw" pathLength="1" style="--c:var(--l-git);--d:550ms" d="M60 230 C60 290 360 270 360 350 L360 740 C360 820 60 800 60 870"/>
+    <path class="gl draw" pathLength="1" style="--c:var(--l-admin);--d:700ms" d="M60 300 C60 360 260 340 260 420 L260 670 C260 750 60 730 60 800"/>
+    <path class="gl draw" pathLength="1" style="--c:var(--l-dash);--d:850ms" d="M60 370 C60 430 160 410 160 490 L160 600 C160 680 60 660 60 730"/>
+    <circle class="cm pop" r="9" cx="60" cy="30" style="--d:300ms"/>
+    <circle class="cm pop" r="9" cx="60" cy="90" style="--d:380ms"/>
+    <circle class="cm pop" r="9" cx="60" cy="160" style="--d:460ms"/>
+    <circle class="cm pop" r="9" cx="60" cy="230" style="--d:540ms"/>
+    <circle class="cm pop" r="9" cx="60" cy="300" style="--d:620ms"/>
+    <circle class="cm pop" r="9" cx="60" cy="370" style="--d:700ms"/>
+    <circle class="cm pop" r="9" cx="60" cy="450" style="--d:800ms"/>
+    <circle class="cm pop" r="9" cx="60" cy="550" style="--d:900ms"/>
+    <circle class="cm pop" r="9" cx="60" cy="650" style="--d:1000ms"/>
+    <circle class="cm pop" r="9" cx="60" cy="730" style="--d:1500ms"/>
+    <circle class="cm pop" r="9" cx="60" cy="800" style="--d:1600ms"/>
+    <circle class="cm pop" r="9" cx="60" cy="870" style="--d:1700ms"/>
+    <circle class="cm pop" r="9" cx="60" cy="940" style="--d:1800ms"/>
+    <circle class="cm pop" r="9" cx="60" cy="1010" style="--d:1900ms"/>
+    <circle class="cm pop" r="9" cx="560" cy="300" style="--c:var(--l-plat);--d:700ms"/>
+    <circle class="cm pop" r="9" cx="560" cy="450" style="--c:var(--l-plat);--d:850ms"/>
+    <circle class="cm pop" r="9" cx="560" cy="600" style="--c:var(--l-plat);--d:1000ms"/>
+    <circle class="cm pop" r="9" cx="560" cy="750" style="--c:var(--l-plat);--d:1150ms"/>
+    <circle class="cm pop" r="9" cx="460" cy="360" style="--c:var(--l-ci);--d:850ms"/>
+    <circle class="cm pop" r="9" cx="460" cy="520" style="--c:var(--l-ci);--d:1000ms"/>
+    <circle class="cm pop" r="9" cx="460" cy="680" style="--c:var(--l-ci);--d:1150ms"/>
+    <circle class="cm pop" r="9" cx="360" cy="420" style="--c:var(--l-git);--d:1000ms"/>
+    <circle class="cm pop" r="9" cx="360" cy="560" style="--c:var(--l-git);--d:1150ms"/>
+    <circle class="cm pop" r="9" cx="360" cy="680" style="--c:var(--l-git);--d:1300ms"/>
+    <circle class="cm pop" r="9" cx="260" cy="480" style="--c:var(--l-admin);--d:1150ms"/>
+    <circle class="cm pop" r="9" cx="260" cy="600" style="--c:var(--l-admin);--d:1300ms"/>
+    <circle class="cm pop" r="9" cx="160" cy="540" style="--c:var(--l-dash);--d:1300ms"/>
+    <circle class="pkt trav" r="7" style="--c:var(--hash)"><animateMotion dur="6s" repeatCount="indefinite" path="M60 0 L60 1080"/></circle>
+    <circle class="pkt trav" r="6" style="--c:var(--l-plat)"><animateMotion dur="7s" begin="1s" repeatCount="indefinite" path="M60 90 C60 150 560 130 560 210 L560 880 C560 960 60 940 60 1010"/></circle>
+    <circle class="pkt trav" r="6" style="--c:var(--l-git)"><animateMotion dur="6.5s" begin="2s" repeatCount="indefinite" path="M60 230 C60 290 360 270 360 350 L360 740 C360 820 60 800 60 870"/></circle>
+  </svg>
+  <div class="eyebrow rise" style="--i:0"><b>●</b>open source · self-hosted</div>
+  <h1 class="hero rise" style="--i:1">git<span class="two">2</span><span class="caret" aria-hidden="true"></span></h1>
+  <p class="lead rise" style="--i:2">Your company's <b>Git server</b>, on your own machines.</p>
+  <div class="cmdline rise" style="--i:3">
+    <div><span class="p">$</span><span data-type="1100">git2ctl install</span></div>
+    <div class="okl ln-in" style="--d:2300ms">✓ git2 is running</div>
+  </div>
+  <div class="keys" aria-hidden="true"><span><kbd>→</kbd>next</span><span><kbd>F</kbd>fullscreen</span></div>
+</section>
+
+<!-- 2 · three promises -->
+<section class="slide" data-sha="3b8d2f4" data-msg="docs: three promises" aria-label="Three promises">
+  <header class="hd">
+    <div class="eyebrow rise" style="--i:0"><b>$</b>cat PROMISES</div>
+    <h2 class="t rise" style="--i:1">Three promises</h2>
+  </header>
+  <div class="promises">
+    <div class="pr rise" style="--i:2">
+      <div class="scene sc-install" aria-hidden="true"><div class="loopwrap">
+        <div class="ti-line"><span class="p">$</span><span class="typ">git2ctl install</span></div>
+        <div class="ti-bar"><i></i></div>
+        <div class="ti-meta"><span>postgres</span><span>git2</span><span>ready</span></div>
+        <div class="okring"><svg class="ic"><use href="#i-check"/></svg></div>
+      </div></div>
+      <div class="k">one command</div>
+      <div class="s">to install</div>
+    </div>
+    <div class="pr rise" style="--i:3">
+      <div class="scene sc-bucket" aria-hidden="true"><div class="loopwrap">
+        <svg class="it" style="--x:50px;--dx:178px;--dl:0s;--c:var(--fg)"><use href="#i-db"/></svg>
+        <svg class="it" style="--x:170px;--dx:58px;--dl:.25s;--c:var(--l-git)"><use href="#i-repo"/></svg>
+        <svg class="it" style="--x:290px;--dx:-62px;--dl:.5s;--c:var(--l-dash)"><use href="#i-cfg"/></svg>
+        <svg class="it" style="--x:410px;--dx:-182px;--dl:.75s;--c:var(--l-admin)"><use href="#i-lock"/></svg>
+        <div class="pulse"></div>
+        <svg class="bkt"><use href="#i-bucket"/></svg>
+        <div class="lockb"><svg class="ic"><use href="#i-lock"/></svg></div>
+      </div></div>
+      <div class="k">one bucket</div>
+      <div class="s">to back up and restore everything</div>
+    </div>
+    <div class="pr rise" style="--i:4">
+      <div class="scene sc-friendly" aria-hidden="true"><div class="loopwrap">
+        <div class="mr">
+          <div class="mr-h"><i class="av"></i><b></b><b class="short"></b></div>
+          <div class="df"><i class="add" style="--w:72%;--k:0"></i><i class="del" style="--w:46%;--k:1"></i><i class="add" style="--w:86%;--k:2"></i><i class="add" style="--w:58%;--k:3"></i></div>
+          <div class="mbtn"><span class="a">Merge</span><span class="b">✓ Merged</span></div>
+        </div>
+        <svg class="cur"><use href="#i-cursor"/></svg>
+      </div></div>
+      <div class="k">friendly</div>
+      <div class="s">for developers and for IT</div>
+    </div>
+  </div>
+</section>
+
+<!-- 3 · on-prem -->
+<section class="slide" data-sha="e71a0c9" data-msg="feat: runs on-prem" aria-label="Runs inside your company">
+  <header class="hd">
+    <div class="eyebrow rise" style="--i:0"><b>$</b>git2ctl status</div>
+    <h2 class="t rise" style="--i:1">Runs inside your company</h2>
+  </header>
+  <div class="scenewrap rise" style="--i:2">
+    <svg viewBox="0 0 1680 580" role="img" aria-label="Developers and IT admins use git2 inside the company network; git2 sends encrypted nightly snapshots to any bucket outside it.">
+      <rect class="netbox" x="0" y="10" width="1130" height="560" rx="30"/>
+      <use href="#i-lock" x="34" y="36" width="30" height="30" style="color:var(--dim)"/>
+      <text class="st" x="74" y="60" style="font-size:22px">your network</text>
+
+      <path class="wire draw" pathLength="1" style="--d:500ms" d="M190 140 C340 140 330 290 480 290"/>
+      <path class="wire draw" pathLength="1" style="--d:550ms" d="M190 285 C330 285 340 290 480 290"/>
+      <path class="wire draw" pathLength="1" style="--d:600ms" d="M190 430 C340 430 330 290 480 290"/>
+      <path class="wire draw" pathLength="1" style="--d:650ms" d="M610 440 L610 375"/>
+      <path class="wire draw" pathLength="1" style="--d:900ms;stroke:var(--l-plat)" d="M740 290 L1365 290"/>
+
+      <g class="pop" style="--d:300ms">
+        <use href="#i-user" x="110" y="100" width="80" height="80" style="color:var(--l-dash)"/>
+        <use href="#i-user" x="110" y="245" width="80" height="80" style="color:var(--l-dash)"/>
+        <use href="#i-user" x="110" y="390" width="80" height="80" style="color:var(--l-dash)"/>
+      </g>
+      <text class="st" x="150" y="515" text-anchor="middle" style="fill:var(--l-dash);font-size:22px">developers</text>
+
+      <g class="pop" style="--d:200ms">
+        <rect x="480" y="205" width="260" height="170" rx="22" style="fill:var(--panel);stroke:var(--fg);stroke-width:2"/>
+        <use href="#i-server" x="508" y="258" width="64" height="64" style="color:var(--fg)"/>
+        <text x="588" y="306" style="font-family:var(--mono);font-size:48px;font-weight:700;font-stretch:112.5%;fill:var(--fg);letter-spacing:-2px">git<tspan style="fill:var(--hash)">2</tspan></text>
+      </g>
+
+      <g class="pop" style="--d:450ms">
+        <use href="#i-shield" x="578" y="440" width="64" height="64" style="color:var(--l-admin)"/>
+      </g>
+      <text class="st" x="660" y="482" style="fill:var(--l-admin);font-size:22px">IT admins</text>
+
+      <use class="pop" href="#i-bucket" x="1340" y="190" width="200" height="200" style="color:var(--l-plat);--d:700ms"/>
+      <text class="st" x="1050" y="268" text-anchor="middle">nightly snapshot · encrypted</text>
+
+      <circle class="pkt" r="7" style="--c:var(--l-dash)"><animateMotion dur="2.4s" repeatCount="indefinite" path="M190 140 C340 140 330 290 480 290"/></circle>
+      <circle class="pkt" r="7" style="--c:var(--l-dash)"><animateMotion dur="2s" begin=".8s" repeatCount="indefinite" path="M190 285 C330 285 340 290 480 290"/></circle>
+      <circle class="pkt" r="7" style="--c:var(--l-dash)"><animateMotion dur="2.6s" begin="1.4s" repeatCount="indefinite" path="M190 430 C340 430 330 290 480 290"/></circle>
+      <circle class="pkt" r="7" style="--c:var(--l-admin)"><animateMotion dur="1.6s" begin=".4s" repeatCount="indefinite" path="M610 440 L610 375"/></circle>
+      <g class="pkt">
+        <rect x="-36" y="-18" width="72" height="36" rx="10" style="fill:var(--l-plat)"/>
+        <use href="#i-lock" x="-12" y="-12" width="24" height="24" style="color:var(--ink)"/>
+        <animateMotion dur="3.4s" begin="1s" repeatCount="indefinite" path="M760 290 L1350 290"/>
+      </g>
+    </svg>
+    <div class="provlabel"><span class="cyc"><span style="--k:0">AWS S3</span><span style="--k:1">GCS</span><span style="--k:2">Azure Blob</span><span style="--k:3">R2</span><span style="--k:4">SeaweedFS</span><span style="--k:5">Garage</span><span style="--k:6">RustFS</span><span style="--k:7">Ceph</span><span style="--k:8">local disk</span></span><small>any bucket you choose</small></div>
+  </div>
+</section>
+
+<!-- 4 · two planes -->
+<section class="slide" data-sha="5fd2c18" data-msg="feat: dash and admin planes" aria-label="Two planes">
+  <header class="hd">
+    <div class="eyebrow rise" style="--i:0"><b>$</b>git2ctl planes</div>
+    <h2 class="t rise" style="--i:1">Two planes, one core</h2>
+  </header>
+  <div class="planeswrap">
+    <div class="planes">
+      <div class="plane rise" style="--i:2;--c:var(--l-dash)">
+        <div class="win" aria-hidden="true">
+          <div class="win-bar"><b>dash</b><span>git.acme.local</span></div>
+          <div class="win-body dm">
+            <div class="dm-side"><i class="on"></i><i></i><i></i><i></i><i></i></div>
+            <div class="dm-main">
+              <div class="dm-head"><span class="repo">acme/payments</span><span class="chip">main</span></div>
+              <div class="dm-mr">
+                <div class="dm-t"><b>!42</b>Retry failed webhooks</div>
+                <div class="dm-diff"><i class="a" style="--w:78%;--k:0"></i><i class="d" style="--w:52%;--k:1"></i><i class="a" style="--w:64%;--k:2"></i><i class="a" style="--w:40%;--k:3"></i></div>
+                <div class="dm-foot"><div class="pipe"><i style="--k:0"></i><i style="--k:1"></i><i style="--k:2"></i><i style="--k:3"></i></div><span class="appr"><span class="x">Approve</span><span class="y">✓ Approved</span></span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="pcap"><b>Dash</b><span>for developers</span></div>
+      </div>
+      <div class="plane rise" style="--i:3;--c:var(--l-admin)">
+        <div class="win" aria-hidden="true">
+          <div class="win-bar"><b>admin</b><span>git.acme.local/admin</span></div>
+          <div class="win-body am">
+            <div class="tile"><span class="tl">users</span><span class="cnt"></span></div>
+            <div class="tile"><span class="tl">single sign-on</span><div class="trow"><div class="sw"><i></i></div>LDAP</div></div>
+            <div class="tile"><span class="tl">runners</span><div class="trow"><div class="rdots"><i style="--k:0"></i><i style="--k:1"></i><i style="--k:2"></i><i style="--k:3"></i></div>4 online</div></div>
+            <div class="tile"><span class="tl">backups</span><div class="trow"><div class="days"><i style="--k:0"></i><i style="--k:1"></i><i style="--k:2"></i><i style="--k:3"></i><i style="--k:4"></i><i style="--k:5"></i><i style="--k:6"></i></div>02:00 ✓</div></div>
+          </div>
+        </div>
+        <div class="pcap"><b>Admin</b><span>for the company's IT</span></div>
+      </div>
+    </div>
+    <div class="links rise" style="--i:4" aria-hidden="true"><i style="left:24.2%;--c:var(--l-dash)"></i><i style="left:75.8%;--c:var(--l-admin)"></i></div>
+    <div class="core rise" style="--i:5">
+      <span class="core-l">shared core</span>
+      <span class="cchip" style="--c:var(--l-admin)">auth-svc</span>
+      <span class="cchip" style="--c:var(--l-git)">git-svc</span>
+      <span class="cchip" style="--c:var(--l-ci)">ci-svc</span>
+      <span class="cchip" style="--c:var(--l-plat)">backup-svc</span>
+      <span class="sep"></span>
+      <span class="cchip"><svg class="ic"><use href="#i-db"/></svg>PostgreSQL</span>
+      <span class="cchip" style="--c:var(--l-plat)"><svg class="ic"><use href="#i-bucket"/></svg>bucket</span>
+    </div>
+  </div>
+</section>
+
+<!-- 5 · architecture -->
+<section class="slide" data-sha="a04e6b3" data-msg="feat(arch): six services" aria-label="Architecture">
+  <header class="hd">
+    <div class="eyebrow rise" style="--i:0"><b>$</b>docker compose ps</div>
+    <h2 class="t rise" style="--i:1">Six services, <em>two</em> dependencies</h2>
+  </header>
+  <svg class="arch" viewBox="0 0 1680 560" role="img" aria-label="Browsers, git and runners talk to one gateway, which routes to six services. They depend only on PostgreSQL and a bucket.">
+    <path class="wire draw" pathLength="1" style="--d:600ms" d="M190 80 L190 130"/>
+    <path class="wire draw" pathLength="1" style="--d:640ms" d="M623 80 L623 130"/>
+    <path class="wire draw" pathLength="1" style="--d:680ms" d="M1056 80 L1056 130"/>
+    <path class="wire draw" pathLength="1" style="--d:720ms" d="M1490 80 L1490 130"/>
+    <path class="wire draw" pathLength="1" style="--d:850ms" d="M130 196 L130 250"/>
+    <path class="wire draw" pathLength="1" style="--d:880ms" d="M414 196 L414 250"/>
+    <path class="wire draw" pathLength="1" style="--d:910ms" d="M698 196 L698 250"/>
+    <path class="wire draw" pathLength="1" style="--d:940ms" d="M982 196 L982 250"/>
+    <path class="wire draw" pathLength="1" style="--d:970ms" d="M1266 196 L1266 250"/>
+    <path class="wire draw" pathLength="1" style="--d:1100ms" d="M130 360 L130 430"/>
+    <path class="wire draw" pathLength="1" style="--d:1130ms" d="M414 360 L414 430"/>
+    <path class="wire draw" pathLength="1" style="--d:1160ms" d="M698 360 L698 430"/>
+    <path class="wire draw" pathLength="1" style="--d:1190ms" d="M982 360 L982 430"/>
+    <path class="wire draw" pathLength="1" style="--d:1220ms" d="M1266 360 L1266 430"/>
+    <path class="wire draw" pathLength="1" style="--d:1250ms" d="M1550 360 L1550 430"/>
+
+    <g class="rise" style="--i:2">
+      <rect class="nb ext" x="0" y="0" width="380" height="80" rx="14" style="--c:var(--l-dash)"/>
+      <text class="nm" x="26" y="38" style="font-size:26px;fill:var(--l-dash)">Dash</text>
+      <text class="sb" x="26" y="66" style="font-size:20px">in the browser</text>
+      <rect class="nb ext" x="433" y="0" width="380" height="80" rx="14" style="--c:var(--l-admin)"/>
+      <text class="nm" x="459" y="38" style="font-size:26px;fill:var(--l-admin)">Admin</text>
+      <text class="sb" x="459" y="66" style="font-size:20px">in the browser</text>
+      <rect class="nb ext" x="866" y="0" width="380" height="80" rx="14" style="--c:var(--l-git)"/>
+      <text class="nm" x="892" y="38" style="font-size:26px;fill:var(--l-git)">git</text>
+      <text class="sb" x="892" y="66" style="font-size:20px">clone and push, HTTPS or SSH</text>
+      <rect class="nb ext" x="1300" y="0" width="380" height="80" rx="14" style="--c:var(--l-ci)"/>
+      <text class="nm" x="1326" y="38" style="font-size:26px;fill:var(--l-ci)">runner</text>
+      <text class="sb" x="1326" y="66" style="font-size:20px">runs jobs in containers</text>
+    </g>
+
+    <g class="rise" style="--i:3;--c:var(--l-plat)">
+      <rect class="nb" x="0" y="130" width="1680" height="66" rx="14"/>
+      <text class="nm" x="26" y="172" style="fill:var(--l-plat);font-size:26px">gateway</text>
+      <text class="sb" x="1654" y="171" text-anchor="end">TLS · sign-in check · serves both UIs</text>
+    </g>
+
+    <g class="rise" style="--i:4">
+      <g style="--c:var(--l-dash)"><rect class="nb" x="0" y="250" width="260" height="110" rx="14"/><text class="nm" x="22" y="294" style="font-size:25px">dash-api</text><text class="sb" x="22" y="330" style="font-size:20px">repos · MRs · issues</text></g>
+      <g style="--c:var(--l-admin)"><rect class="nb" x="284" y="250" width="260" height="110" rx="14"/><text class="nm" x="306" y="294" style="font-size:25px">admin-api</text><text class="sb" x="306" y="330" style="font-size:20px">settings · runners</text></g>
+      <g style="--c:var(--l-admin)"><rect class="nb" x="568" y="250" width="260" height="110" rx="14"/><text class="nm" x="590" y="294" style="font-size:25px">auth-svc</text><text class="sb" x="590" y="330" style="font-size:20px">users · SSO · tokens</text></g>
+      <g style="--c:var(--l-git)"><rect class="nb" x="852" y="250" width="260" height="110" rx="14"/><text class="nm" x="874" y="294" style="font-size:25px">git-svc</text><text class="sb" x="874" y="330" style="font-size:20px">repos on disk</text></g>
+      <g style="--c:var(--l-ci)"><rect class="nb" x="1136" y="250" width="260" height="110" rx="14"/><text class="nm" x="1158" y="294" style="font-size:25px">ci-svc</text><text class="sb" x="1158" y="330" style="font-size:20px">pipelines · jobs</text></g>
+      <g style="--c:var(--l-plat)"><rect class="nb" x="1420" y="250" width="260" height="110" rx="14"/><text class="nm" x="1442" y="294" style="font-size:25px">backup-svc</text><text class="sb" x="1442" y="330" style="font-size:20px">snapshot · restore</text></g>
+    </g>
+
+    <g class="rise" style="--i:6">
+      <rect x="0" y="430" width="1100" height="120" rx="18" style="fill:var(--panel);stroke:var(--fg);stroke-width:2"/>
+      <use href="#i-db" x="30" y="458" width="64" height="64" style="color:var(--fg)"/>
+      <text class="depname" x="116" y="488">PostgreSQL</text>
+      <text class="sb" x="116" y="524">all data · events outbox · no Redis, no message broker</text>
+      <rect x="1136" y="430" width="544" height="120" rx="18" style="fill:var(--panel);stroke:var(--l-plat);stroke-width:2"/>
+      <use href="#i-bucket" x="1166" y="458" width="64" height="64" style="color:var(--l-plat)"/>
+      <text class="depname" x="1252" y="488">a bucket</text>
+      <text class="sb" x="1252" y="524">artifacts · LFS · backups</text>
+    </g>
+
+    <circle class="pkt" r="7" style="--c:var(--l-dash)"><animateMotion dur="3s" begin="1.4s" repeatCount="indefinite" path="M190 80 L190 186 L130 186 L130 250"/></circle>
+    <circle class="pkt" r="7" style="--c:var(--l-admin)"><animateMotion dur="3.4s" begin="2s" repeatCount="indefinite" path="M623 80 L623 186 L414 186 L414 250"/></circle>
+    <circle class="pkt" r="7" style="--c:var(--l-git)"><animateMotion dur="2.6s" begin="1.6s" repeatCount="indefinite" path="M1056 80 L1056 186 L982 186 L982 250"/></circle>
+    <circle class="pkt" r="7" style="--c:var(--l-ci)"><animateMotion dur="3s" begin="2.4s" repeatCount="indefinite" path="M1490 80 L1490 186 L1266 186 L1266 250"/></circle>
+    <circle class="pkt" r="7" style="--c:var(--l-git)"><animateMotion dur="1.6s" begin="2.2s" repeatCount="indefinite" path="M982 360 L982 430"/></circle>
+    <circle class="pkt" r="7" style="--c:var(--l-dash)"><animateMotion dur="1.8s" begin="1.8s" repeatCount="indefinite" path="M130 360 L130 430"/></circle>
+    <circle class="pkt" r="7" style="--c:var(--l-plat)"><animateMotion dur="1.4s" begin="2.8s" repeatCount="indefinite" path="M1550 360 L1550 430"/></circle>
+  </svg>
+</section>
+
+<!-- 6 · one container or many -->
+<section class="slide" data-sha="c2917de" data-msg="feat: one container or many" aria-label="One container or many">
+  <header class="hd">
+    <div class="eyebrow rise" style="--i:0"><b>$</b>git2ctl deploy</div>
+    <h2 class="t rise" style="--i:1">One container, or many</h2>
+  </header>
+  <div class="morph rise" id="morph" data-mode="one" style="--i:2">
+    <div class="shell"><div><svg class="ic"><use href="#i-box"/></svg>git2 · all in one</div></div>
+    <div class="node" style="left:0">node 1</div>
+    <div class="node" style="left:580px">node 2</div>
+    <div class="node" style="left:1160px">node 3</div>
+    <div class="mc rep" style="--c:var(--l-dash);--ax:465px;--ay:120px;--bx:270px;--by:210px">dash-api</div>
+    <div class="mc rep" style="--c:var(--l-git);--ax:465px;--ay:210px;--bx:850px;--by:120px">git-svc</div>
+    <div class="mc rep" style="--c:var(--l-ci);--ax:725px;--ay:210px;--bx:1430px;--by:120px">ci-svc</div>
+    <div class="mc rep" style="--c:var(--l-ci);--ax:725px;--ay:210px;--bx:1184px;--by:210px">ci-svc</div>
+    <div class="mc" style="--c:var(--l-dash);--ax:465px;--ay:120px;--bx:24px;--by:120px">dash-api</div>
+    <div class="mc" style="--c:var(--l-admin);--ax:725px;--ay:120px;--bx:270px;--by:120px">admin-api</div>
+    <div class="mc" style="--c:var(--l-admin);--ax:985px;--ay:120px;--bx:24px;--by:210px">auth-svc</div>
+    <div class="mc" style="--c:var(--l-git);--ax:465px;--ay:210px;--bx:604px;--by:120px">git-svc</div>
+    <div class="mc" style="--c:var(--l-ci);--ax:725px;--ay:210px;--bx:1184px;--by:120px">ci-svc</div>
+    <div class="mc" style="--c:var(--l-plat);--ax:985px;--ay:210px;--bx:604px;--by:210px">backup-svc</div>
+    <div class="mdeps"><span>+</span><span class="cchip"><svg class="ic"><use href="#i-db"/></svg>PostgreSQL</span><span>+</span><span class="cchip" style="--c:var(--l-plat)"><svg class="ic"><use href="#i-bucket"/></svg>bucket</span></div>
+    <div class="modes" role="group" aria-label="Deployment mode">
+      <button type="button" class="mode" data-m="one"><code>docker compose up</code><span>a small team</span></button>
+      <button type="button" class="mode" data-m="many"><code>helm install git2</code><span>a big company, scale what's busy</span></button>
+    </div>
+  </div>
+</section>
+
+<!-- 7 · install -->
+<section class="slide" data-sha="8e3fa51" data-msg="feat: install flow" aria-label="Install">
+  <header class="hd">
+    <div class="eyebrow rise" style="--i:0"><b>$</b>git2ctl install</div>
+    <h2 class="t rise" style="--i:1">From zero to running</h2>
+  </header>
+  <div class="install">
+    <div class="term rise" style="--i:2">
+      <div class="term-bar"><span>admin@build-01</span><span>zsh</span></div>
+      <div class="term-body">
+        <div><span class="p">$</span><span data-type="300">git2ctl install</span></div>
+        <div class="il ln-in" style="--d:1300ms"><span class="slot"><span class="spin"></span><span class="ok"><svg class="ic"><use href="#i-check"/></svg></span></span>docker found</div>
+        <div class="il ln-in" style="--d:1900ms"><span class="slot"><span class="spin"></span><span class="ok"><svg class="ic"><use href="#i-check"/></svg></span></span>postgres started</div>
+        <div class="il ln-in" style="--d:2500ms"><span class="slot"><span class="spin"></span><span class="ok"><svg class="ic"><use href="#i-check"/></svg></span></span>bucket connected <span class="dim">s3://acme-git2</span></div>
+        <div class="il ln-in" style="--d:3100ms"><span class="slot"><span class="spin"></span><span class="ok"><svg class="ic"><use href="#i-check"/></svg></span></span>git2 is running</div>
+        <div class="il ln-in" style="--d:3800ms"><span class="ar">→</span>open <u>git.acme.local/setup</u></div>
+      </div>
+    </div>
+    <div class="win wiz rise" id="wiz" data-step="4" style="--i:3;--c:var(--hash)" aria-hidden="true">
+      <div class="win-bar"><b>setup</b><span>git.acme.local/setup</span></div>
+      <div class="win-body">
+        <div class="stepper">
+          <div class="sc" data-n="1"><i>1</i><span>admin</span></div><b></b>
+          <div class="sc" data-n="2"><i>2</i><span>domain</span></div><b></b>
+          <div class="sc" data-n="3"><i>3</i><span>bucket</span></div>
+        </div>
+        <div class="field">
+          <span class="lb lb1">First admin's email</span><span class="lb lb2">Domain</span><span class="lb lb3">Backup bucket</span>
+          <div class="inp"><span class="v v1" style="--w:12ch">ada@acme.com</span><span class="v v2" style="--w:14ch">git.acme.local</span><span class="v v3" style="--w:14ch">s3://acme-git2</span></div>
+        </div>
+        <div class="next">Continue →</div>
+        <div class="ready"><div class="okring" style="position:relative"><svg class="ic"><use href="#i-check"/></svg></div>git2 is ready</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 8 · backup & restore -->
+<section class="slide" data-sha="1d6c4b0" data-msg="feat(backup): bucket snapshots" aria-label="Backup and restore">
+  <header class="hd">
+    <div class="eyebrow rise" style="--i:0"><b>$</b>git2ctl backup</div>
+    <h2 class="t rise" style="--i:1">The whole instance, in <em>one bucket</em></h2>
+  </header>
+  <div class="bk p1 p2 p3 p4 rise" id="bk" style="--i:2">
+    <svg viewBox="0 0 1680 440" role="img" aria-label="The database, repos, config and secrets of one server go into a bucket as an encrypted snapshot. After the server fails, a new server is restored from the bucket.">
+      <g class="srvA">
+        <rect class="srv" x="40" y="40" width="400" height="330" rx="22"/>
+        <text class="st" x="72" y="84" style="font-size:22px;fill:var(--fg)">server</text>
+        <g class="tiles">
+          <rect class="tr" x="72" y="110" width="160" height="110" rx="12"/><use href="#i-db" x="128" y="124" width="48" height="48" style="color:var(--fg)"/><text class="tlab" x="152" y="202" text-anchor="middle">database</text>
+          <rect class="tr" x="248" y="110" width="160" height="110" rx="12"/><use href="#i-repo" x="304" y="124" width="48" height="48" style="color:var(--l-git)"/><text class="tlab" x="328" y="202" text-anchor="middle">repos</text>
+          <rect class="tr" x="72" y="240" width="160" height="110" rx="12"/><use href="#i-cfg" x="128" y="254" width="48" height="48" style="color:var(--l-dash)"/><text class="tlab" x="152" y="332" text-anchor="middle">git2.yaml</text>
+          <rect class="tr" x="248" y="240" width="160" height="110" rx="12"/><use href="#i-lock" x="304" y="254" width="48" height="48" style="color:var(--l-admin)"/><text class="tlab" x="328" y="332" text-anchor="middle">secrets</text>
+        </g>
+        <g class="failx" style="stroke:var(--bad);stroke-width:8;stroke-linecap:round"><path d="M190 155 L290 255 M290 155 L190 255"/></g>
+        <text class="st runtag" x="240" y="414" text-anchor="middle" style="fill:var(--ok);font-size:22px">● running</text>
+        <text class="st failx" x="240" y="414" text-anchor="middle" style="fill:var(--bad);font-size:22px">✕ disk failed</text>
+      </g>
+
+      <text class="st" x="840" y="64" text-anchor="middle" style="fill:var(--l-plat);font-size:24px">s3://acme-git2</text>
+      <path class="bline" d="M690 120 L730 392 Q840 418 950 392 L990 120"/>
+      <ellipse cx="840" cy="120" rx="150" ry="26" class="bline"/>
+      <rect class="snap" x="740" y="330" width="200" height="34" rx="8"/><use href="#i-lock" x="750" y="335" width="24" height="24" style="color:var(--l-plat)"/><text class="snaptx" x="784" y="354">10-07 02:00</text>
+      <rect class="snap" x="740" y="286" width="200" height="34" rx="8"/><use href="#i-lock" x="750" y="291" width="24" height="24" style="color:var(--l-plat)"/><text class="snaptx" x="784" y="310">10-08 02:00</text>
+      <g class="snapnew"><rect class="snap" x="740" y="242" width="200" height="34" rx="8" style="stroke-width:2.5"/><use href="#i-lock" x="750" y="247" width="24" height="24" style="color:var(--l-plat)"/><text class="snaptx" x="784" y="266">10-09 02:00</text></g>
+
+      <g class="srvB">
+        <rect class="srv" x="1240" y="40" width="400" height="330" rx="22"/>
+        <text class="st" x="1272" y="84" style="font-size:22px;fill:var(--fg)">new server</text>
+        <rect class="tr empty" x="1272" y="110" width="160" height="110" rx="12"/>
+        <rect class="tr empty" x="1448" y="110" width="160" height="110" rx="12"/>
+        <rect class="tr empty" x="1272" y="240" width="160" height="110" rx="12"/>
+        <rect class="tr empty" x="1448" y="240" width="160" height="110" rx="12"/>
+        <text class="st waittag" x="1440" y="414" text-anchor="middle" style="font-size:22px">empty</text>
+        <text class="st oktag" x="1440" y="414" text-anchor="middle" style="fill:var(--ok);font-size:22px">✓ restored</text>
+      </g>
+
+      <g class="cl up" style="--dx:688px;--dy:-40px;--td:0s"><rect class="tr" x="72" y="110" width="160" height="110" rx="12"/><use href="#i-db" x="128" y="124" width="48" height="48" style="color:var(--fg)"/><text class="tlab" x="152" y="202" text-anchor="middle">database</text></g>
+      <g class="cl up" style="--dx:512px;--dy:-40px;--td:.2s"><rect class="tr" x="248" y="110" width="160" height="110" rx="12"/><use href="#i-repo" x="304" y="124" width="48" height="48" style="color:var(--l-git)"/><text class="tlab" x="328" y="202" text-anchor="middle">repos</text></g>
+      <g class="cl up" style="--dx:688px;--dy:-170px;--td:.4s"><rect class="tr" x="72" y="240" width="160" height="110" rx="12"/><use href="#i-cfg" x="128" y="254" width="48" height="48" style="color:var(--l-dash)"/><text class="tlab" x="152" y="332" text-anchor="middle">git2.yaml</text></g>
+      <g class="cl up" style="--dx:512px;--dy:-170px;--td:.6s"><rect class="tr" x="248" y="240" width="160" height="110" rx="12"/><use href="#i-lock" x="304" y="254" width="48" height="48" style="color:var(--l-admin)"/><text class="tlab" x="328" y="332" text-anchor="middle">secrets</text></g>
+
+      <g class="cl dn" style="--dx:-512px;--dy:94px;--td:0s"><rect class="tr" x="1272" y="110" width="160" height="110" rx="12"/><use href="#i-db" x="1328" y="124" width="48" height="48" style="color:var(--fg)"/><text class="tlab" x="1352" y="202" text-anchor="middle">database</text></g>
+      <g class="cl dn" style="--dx:-688px;--dy:94px;--td:.2s"><rect class="tr" x="1448" y="110" width="160" height="110" rx="12"/><use href="#i-repo" x="1504" y="124" width="48" height="48" style="color:var(--l-git)"/><text class="tlab" x="1528" y="202" text-anchor="middle">repos</text></g>
+      <g class="cl dn" style="--dx:-512px;--dy:-36px;--td:.4s"><rect class="tr" x="1272" y="240" width="160" height="110" rx="12"/><use href="#i-cfg" x="1328" y="254" width="48" height="48" style="color:var(--l-dash)"/><text class="tlab" x="1352" y="332" text-anchor="middle">git2.yaml</text></g>
+      <g class="cl dn" style="--dx:-688px;--dy:-36px;--td:.6s"><rect class="tr" x="1448" y="240" width="160" height="110" rx="12"/><use href="#i-lock" x="1504" y="254" width="48" height="48" style="color:var(--l-admin)"/><text class="tlab" x="1528" y="332" text-anchor="middle">secrets</text></g>
+    </svg>
+    <div class="bkcmds">
+      <div class="c1"><span class="p">$</span>git2ctl backup --to s3://acme-git2</div>
+      <div class="c2"><span class="p">$</span>git2ctl restore s3://acme-git2/latest</div>
+    </div>
+  </div>
+</section>
+
+<!-- 9 · life of a push -->
+<section class="slide" data-sha="f49b2e7" data-msg="feat: life of a push" aria-label="Life of a git push">
+  <header class="hd">
+    <div class="eyebrow rise" style="--i:0"><b>$</b>git push origin main</div>
+    <h2 class="t rise" style="--i:1">Life of a <em>git push</em></h2>
+  </header>
+  <div class="flow rise" id="flow" style="--i:2">
+    <svg viewBox="-15 0 1680 360" role="img" aria-label="A push travels through the gateway, auth-svc, git-svc, the Postgres outbox, ci-svc and a runner, then back to the merge request in Dash.">
+      <defs>
+        <filter id="glow" x="-200%" y="-200%" width="500%" height="500%"><feGaussianBlur stdDeviation="6" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+      </defs>
+      <path id="e1" class="edge" d="M200 205 L290 205"/>
+      <path id="e2" class="edge" d="M390 160 L390 100"/>
+      <path id="e3" class="edge" d="M490 205 L580 205"/>
+      <path id="e4" class="edge" d="M780 205 L870 205"/>
+      <path id="e5" class="edge" d="M1070 205 C1115 205 1115 105 1160 105"/>
+      <path id="e6" class="edge" d="M1360 105 L1450 105"/>
+      <path id="e7" class="edge" d="M1070 205 C1115 205 1115 305 1160 305"/>
+      <path id="e8" class="edge" d="M1360 305 L1450 305"/>
+      <g class="node2" id="n-dev" style="--c:var(--fg)"><rect x="0" y="160" width="200" height="90" rx="12"/><text class="nm" x="20" y="198">you</text><text class="sb" x="20" y="230">git push</text></g>
+      <g class="node2" id="n-gw" style="--c:var(--l-plat)"><rect x="290" y="160" width="200" height="90" rx="12"/><text class="nm" x="310" y="198">gateway</text><text class="sb" x="310" y="230">routes the push</text></g>
+      <g class="node2" id="n-auth" style="--c:var(--l-admin)"><rect x="290" y="10" width="200" height="90" rx="12"/><text class="nm" x="310" y="48">auth-svc</text><text class="sb" x="310" y="80">token valid?</text></g>
+      <g class="node2" id="n-git" style="--c:var(--l-git)"><rect x="580" y="160" width="200" height="90" rx="12"/><text class="nm" x="600" y="198">git-svc</text><text class="sb" x="600" y="230">writes the refs</text></g>
+      <g class="node2" id="n-bus" style="--c:var(--fg)"><rect x="870" y="160" width="200" height="90" rx="12"/><text class="nm" x="890" y="198">postgres</text><text class="sb" x="890" y="230">outbox event</text></g>
+      <g class="node2" id="n-ci" style="--c:var(--l-ci)"><rect x="1160" y="60" width="200" height="90" rx="12"/><text class="nm" x="1180" y="98">ci-svc</text><text class="sb" x="1180" y="130">new pipeline</text></g>
+      <g class="node2" id="n-run" style="--c:var(--l-ci)"><rect x="1450" y="60" width="200" height="90" rx="12"/><text class="nm" x="1470" y="98">runner</text><text class="sb" x="1470" y="130">docker run</text></g>
+      <g class="node2" id="n-collab" style="--c:var(--l-dash)"><rect x="1160" y="260" width="200" height="90" rx="12"/><text class="nm" x="1180" y="298">dash-api</text><text class="sb" x="1180" y="330">MR status</text></g>
+      <g class="node2" id="n-web" style="--c:var(--l-dash)"><rect x="1450" y="260" width="200" height="90" rx="12"/><text class="nm" x="1470" y="298">Dash</text><text class="sb" x="1470" y="330">✓ passed</text></g>
+      <circle id="pk" r="9" cx="200" cy="205" opacity="0" filter="url(#glow)"/>
+    </svg>
+    <div class="steps">
+      <button type="button" class="step"><span class="no">01</span><span>You run <code>git push</code>.</span></button>
+      <button type="button" class="step"><span class="no">02</span><span>The gateway asks auth-svc if your token is valid.</span></button>
+      <button type="button" class="step"><span class="no">03</span><span>git-svc stores the commits and moves the branch.</span></button>
+      <button type="button" class="step"><span class="no">04</span><span>git-svc writes <code>repo.pushed</code> to the Postgres outbox.</span></button>
+      <button type="button" class="step"><span class="no">05</span><span>ci-svc reads <code>.git2-ci.yml</code> and creates a pipeline.</span></button>
+      <button type="button" class="step"><span class="no">06</span><span>A runner picks up the job and runs it in a container.</span></button>
+      <button type="button" class="step"><span class="no">07</span><span>The result comes back as <code>pipeline.finished</code>.</span></button>
+      <button type="button" class="step"><span class="no">08</span><span>The merge request in Dash shows ✓.</span></button>
+    </div>
+  </div>
+</section>
+
+<!-- 10 · owners -->
+<section class="slide" data-sha="6ab31c8" data-msg="chore: five owners" aria-label="Five owners">
+  <header class="hd">
+    <div class="eyebrow rise" style="--i:0"><b>$</b>cat CODEOWNERS</div>
+    <h2 class="t rise" style="--i:1">Five owners</h2>
+  </header>
+  <div class="owners">
+    <div class="tier rise" style="--i:2">planes</div>
+    <div class="ob plane rise" style="--i:3;--c:var(--l-dash)">
+      <svg class="ic"><use href="#i-dash"/></svg>
+      <div class="nm2">Dash</div>
+      <div class="chips"><span class="svcchip">dash-web</span><span class="svcchip">dash-api</span></div>
+      <div class="tags">repos · code · merge requests · issues · search</div>
+      <div class="owner"><label for="owner-dash">owner</label><input id="owner-dash" data-store="owner-dash" placeholder="@name" autocomplete="off" spellcheck="false"></div>
+    </div>
+    <div class="ob plane rise" style="--i:4;--c:var(--l-admin)">
+      <svg class="ic"><use href="#i-shield"/></svg>
+      <div class="nm2">Admin &amp; Identity</div>
+      <div class="chips"><span class="svcchip">admin-web</span><span class="svcchip">admin-api</span><span class="svcchip">auth-svc</span></div>
+      <div class="tags">users · teams · SSO and LDAP · settings · audit log</div>
+      <div class="owner"><label for="owner-admin">owner</label><input id="owner-admin" data-store="owner-admin" placeholder="@name" autocomplete="off" spellcheck="false"></div>
+    </div>
+    <div class="tier rise" style="--i:5">engines</div>
+    <div class="ob rise" style="--i:6;--c:var(--l-git)">
+      <svg class="ic"><use href="#i-repo"/></svg>
+      <div class="nm2">Git Core</div>
+      <div class="chips"><span class="svcchip">git-svc</span></div>
+      <div class="tags">push · clone · diff · merge · LFS</div>
+      <div class="owner"><label for="owner-git">owner</label><input id="owner-git" data-store="owner-git" placeholder="@name" autocomplete="off" spellcheck="false"></div>
+    </div>
+    <div class="ob rise" style="--i:7;--c:var(--l-ci)">
+      <svg class="ic"><use href="#i-pipe"/></svg>
+      <div class="nm2">Pipelines</div>
+      <div class="chips"><span class="svcchip">ci-svc</span><span class="svcchip">runner</span></div>
+      <div class="tags">ci.yml · jobs · logs · artifacts</div>
+      <div class="owner"><label for="owner-ci">owner</label><input id="owner-ci" data-store="owner-ci" placeholder="@name" autocomplete="off" spellcheck="false"></div>
+    </div>
+    <div class="ob rise" style="--i:8;--c:var(--l-plat)">
+      <svg class="ic"><use href="#i-bucket"/></svg>
+      <div class="nm2">Platform &amp; Backup</div>
+      <div class="chips"><span class="svcchip">gateway</span><span class="svcchip">backup-svc</span><span class="svcchip">git2ctl</span></div>
+      <div class="tags">install · backup · restore · upgrades</div>
+      <div class="owner"><label for="owner-plat">owner</label><input id="owner-plat" data-store="owner-plat" placeholder="@name" autocomplete="off" spellcheck="false"></div>
+    </div>
+  </div>
+</section>
+
+<!-- 11 · nine weeks -->
+<section class="slide" data-sha="b85e0f2" data-msg="plan: nine weeks" aria-label="Nine-week plan">
+  <header class="hd">
+    <div class="eyebrow rise" style="--i:0"><b>$</b>git log --graph --since=week-1</div>
+    <h2 class="t rise" style="--i:1">Nine weeks, five lanes in parallel</h2>
+  </header>
+  <svg class="arch" viewBox="0 0 1680 580" role="img" aria-label="Five lanes run in parallel for nine weeks and sync at milestones M0 to M4, with week 9 for integration and demo day.">
+    <path class="grid9" d="M391.1 120 V520 M552.2 120 V520 M713.3 120 V520 M874.4 120 V520 M1035.6 120 V520 M1196.7 120 V520 M1357.8 120 V520 M1518.9 120 V520"/>
+    <rect class="w9band rise" style="--i:9" x="1527" y="136" width="148" height="392" rx="14"/>
+    <text class="w9t" x="1601" y="300" text-anchor="middle">integrate</text>
+    <text class="w9t" x="1601" y="336" text-anchor="middle">bug bash</text>
+    <text class="w9t" x="1601" y="372" text-anchor="middle">demo</text>
+
+    <path class="gl draw" pathLength="1" style="--d:200ms;stroke-width:3" d="M230 100 L1680 100"/>
+    <text class="st" x="230" y="86" style="fill:var(--dim)">main</text>
+    <path class="sync draw" pathLength="1" style="--d:900ms" d="M391.1 100 V500"/>
+    <path class="sync draw" pathLength="1" style="--d:1100ms" d="M713.3 100 V500"/>
+    <path class="sync draw" pathLength="1" style="--d:1300ms" d="M1035.6 100 V500"/>
+    <path class="sync draw" pathLength="1" style="--d:1500ms" d="M1357.8 100 V500"/>
+    <path class="sync draw" pathLength="1" style="--d:1700ms" d="M1518.9 100 V500"/>
+
+    <text class="lane-n" x="0" y="188" style="fill:var(--l-dash)">Dash</text>
+    <text class="lane-n" x="0" y="268" style="fill:var(--l-admin)">Admin &amp; Identity</text>
+    <text class="lane-n" x="0" y="348" style="fill:var(--l-git)">Git Core</text>
+    <text class="lane-n" x="0" y="428" style="fill:var(--l-ci)">Pipelines</text>
+    <text class="lane-n" x="0" y="508" style="fill:var(--l-plat)">Platform &amp; Backup</text>
+    <path class="gl draw" pathLength="1" style="--c:var(--l-dash);--d:350ms" d="M230 180 L1518.9 180"/>
+    <path class="gl draw" pathLength="1" style="--c:var(--l-admin);--d:450ms" d="M230 260 L1518.9 260"/>
+    <path class="gl draw" pathLength="1" style="--c:var(--l-git);--d:550ms" d="M230 340 L1518.9 340"/>
+    <path class="gl draw" pathLength="1" style="--c:var(--l-ci);--d:650ms" d="M230 420 L1518.9 420"/>
+    <path class="gl draw" pathLength="1" style="--c:var(--l-plat);--d:750ms" d="M230 500 L1518.9 500"/>
+
+    <g class="rise" style="--i:6">
+      <text class="seg" x="310.6" y="164" text-anchor="middle">login shell</text><text class="seg" x="632.8" y="164" text-anchor="middle">repo + code views</text><text class="seg" x="955" y="164" text-anchor="middle">MR + review UI</text><text class="seg" x="1277.2" y="164" text-anchor="middle">pipeline views</text><text class="seg" x="1438.3" y="164" text-anchor="middle">polish</text>
+      <text class="seg" x="310.6" y="244" text-anchor="middle">auth shell</text><text class="seg" x="632.8" y="244" text-anchor="middle">users · teams</text><text class="seg" x="955" y="244" text-anchor="middle">SSO · LDAP</text><text class="seg" x="1277.2" y="244" text-anchor="middle">runners · settings</text><text class="seg" x="1438.3" y="244" text-anchor="middle">audit log</text>
+      <text class="seg" x="310.6" y="324" text-anchor="middle">repo storage</text><text class="seg" x="632.8" y="324" text-anchor="middle">push · clone</text><text class="seg" x="955" y="324" text-anchor="middle">diff · merge</text><text class="seg" x="1277.2" y="324" text-anchor="middle">protection · LFS</text><text class="seg" x="1438.3" y="324" text-anchor="middle">SSH</text>
+      <text class="seg" x="310.6" y="404" text-anchor="middle">ci.yml spec</text><text class="seg" x="632.8" y="404" text-anchor="middle">runner v0</text><text class="seg" x="955" y="404" text-anchor="middle">job queue</text><text class="seg" x="1277.2" y="404" text-anchor="middle">logs · artifacts</text><text class="seg" x="1438.3" y="404" text-anchor="middle">caching</text>
+      <text class="seg" x="310.6" y="484" text-anchor="middle">compose</text><text class="seg" x="632.8" y="484" text-anchor="middle">gateway · git2ctl</text><text class="seg" x="955" y="484" text-anchor="middle">backup v0</text><text class="seg" x="1277.2" y="484" text-anchor="middle">bucket drivers</text><text class="seg" x="1438.3" y="484" text-anchor="middle">restore</text>
+    </g>
+
+    <g>
+      <circle class="cm pop" r="8" cx="391.1" cy="180" style="--c:var(--l-dash);--d:1000ms"/><circle class="cm pop" r="8" cx="391.1" cy="260" style="--c:var(--l-admin);--d:1040ms"/><circle class="cm pop" r="8" cx="391.1" cy="340" style="--c:var(--l-git);--d:1080ms"/><circle class="cm pop" r="8" cx="391.1" cy="420" style="--c:var(--l-ci);--d:1120ms"/><circle class="cm pop" r="8" cx="391.1" cy="500" style="--c:var(--l-plat);--d:1160ms"/>
+      <circle class="cm pop" r="8" cx="713.3" cy="180" style="--c:var(--l-dash);--d:1200ms"/><circle class="cm pop" r="8" cx="713.3" cy="260" style="--c:var(--l-admin);--d:1240ms"/><circle class="cm pop" r="8" cx="713.3" cy="340" style="--c:var(--l-git);--d:1280ms"/><circle class="cm pop" r="8" cx="713.3" cy="420" style="--c:var(--l-ci);--d:1320ms"/><circle class="cm pop" r="8" cx="713.3" cy="500" style="--c:var(--l-plat);--d:1360ms"/>
+      <circle class="cm pop" r="8" cx="1035.6" cy="180" style="--c:var(--l-dash);--d:1400ms"/><circle class="cm pop" r="8" cx="1035.6" cy="260" style="--c:var(--l-admin);--d:1440ms"/><circle class="cm pop" r="8" cx="1035.6" cy="340" style="--c:var(--l-git);--d:1480ms"/><circle class="cm pop" r="8" cx="1035.6" cy="420" style="--c:var(--l-ci);--d:1520ms"/><circle class="cm pop" r="8" cx="1035.6" cy="500" style="--c:var(--l-plat);--d:1560ms"/>
+      <circle class="cm pop" r="8" cx="1357.8" cy="180" style="--c:var(--l-dash);--d:1600ms"/><circle class="cm pop" r="8" cx="1357.8" cy="260" style="--c:var(--l-admin);--d:1640ms"/><circle class="cm pop" r="8" cx="1357.8" cy="340" style="--c:var(--l-git);--d:1680ms"/><circle class="cm pop" r="8" cx="1357.8" cy="420" style="--c:var(--l-ci);--d:1720ms"/><circle class="cm pop" r="8" cx="1357.8" cy="500" style="--c:var(--l-plat);--d:1760ms"/>
+      <circle class="cm pop" r="8" cx="1518.9" cy="180" style="--c:var(--l-dash);--d:1800ms"/><circle class="cm pop" r="8" cx="1518.9" cy="260" style="--c:var(--l-admin);--d:1840ms"/><circle class="cm pop" r="8" cx="1518.9" cy="340" style="--c:var(--l-git);--d:1880ms"/><circle class="cm pop" r="8" cx="1518.9" cy="420" style="--c:var(--l-ci);--d:1920ms"/><circle class="cm pop" r="8" cx="1518.9" cy="500" style="--c:var(--l-plat);--d:1960ms"/>
+    </g>
+
+    <g transform="translate(391.1 100)"><path class="pop" style="fill:var(--hash);--d:950ms" d="M0 -11 L11 0 L0 11 L-11 0Z"/></g>
+    <g transform="translate(713.3 100)"><path class="pop" style="fill:var(--hash);--d:1150ms" d="M0 -11 L11 0 L0 11 L-11 0Z"/></g>
+    <g transform="translate(1035.6 100)"><path class="pop" style="fill:var(--hash);--d:1350ms" d="M0 -11 L11 0 L0 11 L-11 0Z"/></g>
+    <g transform="translate(1357.8 100)"><path class="pop" style="fill:var(--hash);--d:1550ms" d="M0 -11 L11 0 L0 11 L-11 0Z"/></g>
+    <g transform="translate(1518.9 100)"><path class="pop" style="fill:var(--hash);--d:1750ms" d="M0 -11 L11 0 L0 11 L-11 0Z"/></g>
+    <circle class="pop" r="10" cx="1601" cy="100" style="fill:var(--hash);--d:1950ms"/>
+    <g class="rise" style="--i:7">
+      <text class="mtag" x="391.1" y="36" text-anchor="middle">M0</text><text class="mname" x="391.1" y="64" text-anchor="middle">foundation</text>
+      <text class="mtag" x="713.3" y="36" text-anchor="middle">M1</text><text class="mname" x="713.3" y="64" text-anchor="middle">first push</text>
+      <text class="mtag" x="1035.6" y="36" text-anchor="middle">M2</text><text class="mname" x="1035.6" y="64" text-anchor="middle">first merge</text>
+      <text class="mtag" x="1357.8" y="36" text-anchor="middle">M3</text><text class="mname" x="1357.8" y="64" text-anchor="middle">green pipeline</text>
+      <text class="mtag" x="1518.9" y="36" text-anchor="middle">M4</text><text class="mname" x="1518.9" y="64" text-anchor="middle">restore</text>
+      <text class="mtag" x="1625" y="36" text-anchor="middle">W9</text><text class="mname" x="1625" y="64" text-anchor="middle">demo day</text>
+    </g>
+
+    <g class="rise" style="--i:8">
+      <text class="wkx" x="310.6" y="566" text-anchor="middle">W1</text><text class="wkx" x="471.7" y="566" text-anchor="middle">W2</text><text class="wkx" x="632.8" y="566" text-anchor="middle">W3</text><text class="wkx" x="793.9" y="566" text-anchor="middle">W4</text><text class="wkx" x="955" y="566" text-anchor="middle">W5</text><text class="wkx" x="1116.1" y="566" text-anchor="middle">W6</text><text class="wkx" x="1277.2" y="566" text-anchor="middle">W7</text><text class="wkx" x="1438.3" y="566" text-anchor="middle">W8</text><text class="wkx" x="1599.4" y="566" text-anchor="middle">W9</text>
+    </g>
+
+    <circle class="pkt trav" r="5" style="--c:var(--l-dash)"><animateMotion dur="7s" begin="2s" repeatCount="indefinite" path="M230 180 L1518.9 180"/></circle>
+    <circle class="pkt trav" r="5" style="--c:var(--l-admin)"><animateMotion dur="8s" begin="2.6s" repeatCount="indefinite" path="M230 260 L1518.9 260"/></circle>
+    <circle class="pkt trav" r="5" style="--c:var(--l-git)"><animateMotion dur="6.5s" begin="2.2s" repeatCount="indefinite" path="M230 340 L1518.9 340"/></circle>
+    <circle class="pkt trav" r="5" style="--c:var(--l-ci)"><animateMotion dur="7.5s" begin="3s" repeatCount="indefinite" path="M230 420 L1518.9 420"/></circle>
+    <circle class="pkt trav" r="5" style="--c:var(--l-plat)"><animateMotion dur="8.5s" begin="2.4s" repeatCount="indefinite" path="M230 500 L1518.9 500"/></circle>
+    <path class="playhead" d="M230 86 V530" style="stroke:var(--hash);stroke-width:2"/>
+  </svg>
+</section>
+
+<!-- 12 · demo reel -->
+<section class="slide" data-sha="0e7d9a6" data-msg="test: milestone demos" aria-label="Milestone demos">
+  <header class="hd">
+    <div class="eyebrow rise" style="--i:0"><b>$</b>make demo</div>
+    <h2 class="t rise" style="--i:1">Every milestone is a demo</h2>
+  </header>
+  <div class="reel">
+    <div class="rc rise" style="--i:2">
+      <div class="mini m0" aria-hidden="true"><div class="form"><i class="f f1"></i><i class="f f2"></i><i class="b"></i></div><div class="okring"><svg class="ic"><use href="#i-check"/></svg></div></div>
+      <div class="tg">M0<span>W1</span></div><div class="nmx">Sign in</div><div class="sbx">Dash and Admin, one login</div>
+    </div>
+    <div class="rc rise" style="--i:3">
+      <div class="mini m1" aria-hidden="true"><div class="cmd"><b>$</b><span class="tt">git push</span></div><div class="rows"><i style="--k:0;--w:60%"></i><i style="--k:1;--w:45%"></i><i style="--k:2;--w:70%"></i><i style="--k:3;--w:38%"></i></div></div>
+      <div class="tg">M1<span>W3</span></div><div class="nmx">Push &amp; browse</div><div class="sbx">git push, then see the code</div>
+    </div>
+    <div class="rc rise" style="--i:4">
+      <div class="mini m2" aria-hidden="true"><div class="dfx"><i style="--k:0;--w:80%"></i><i class="d" style="--k:1;--w:55%"></i><i style="--k:2;--w:68%"></i><i style="--k:3;--w:44%"></i></div><div class="pill"><span class="a">merge</span><span class="b">✓ merged</span></div></div>
+      <div class="tg">M2<span>W5</span></div><div class="nmx">Review &amp; merge</div><div class="sbx">plus users and sign-on</div>
+    </div>
+    <div class="rc rise" style="--i:5">
+      <div class="mini m3" aria-hidden="true"><div class="pp"><i style="--k:0"></i><i style="--k:1"></i><i style="--k:2"></i><i style="--k:3"></i></div><div class="pass">✓ passed</div></div>
+      <div class="tg">M3<span>W7</span></div><div class="nmx">Green pipeline</div><div class="sbx">jobs run in containers</div>
+    </div>
+    <div class="rc rise" style="--i:6">
+      <div class="mini m4" aria-hidden="true"><svg class="ic bi"><use href="#i-bucket"/></svg><div class="tr2"><i style="--k:0"></i><i style="--k:1"></i><i style="--k:2"></i></div><svg class="ic si"><use href="#i-server"/></svg></div>
+      <div class="tg">M4<span>W8</span></div><div class="nmx">Backup &amp; restore</div><div class="sbx">new server, same git2</div>
+    </div>
+    <div class="rc rise" style="--i:7">
+      <div class="mini m5" aria-hidden="true"><span class="live">live</span><i class="halo"></i><i class="halo h2"></i><span class="big">git<span>2</span></span></div>
+      <div class="tg">DEMO<span>W9</span></div><div class="nmx">Demo day</div><div class="sbx">the whole loop, live</div>
+    </div>
+  </div>
+</section>
+
+<!-- 13 · stack -->
+<section class="slide" data-sha="47c1e5d" data-msg="build: stack" aria-label="Stack">
+  <header class="hd">
+    <div class="eyebrow rise" style="--i:0"><b>$</b>cat go.mod</div>
+    <h2 class="t rise" style="--i:1">What it's made of</h2>
+  </header>
+  <div class="stackcol">
+    <div class="lbl2 rise" style="--i:2">a company runs</div>
+    <div class="runrow">
+      <div class="rt rise" style="--i:3;--c:var(--fg)"><svg class="ic"><use href="#i-box"/></svg><div><div class="n">git<span style="color:var(--hash)">2</span></div><div class="s">one image</div></div></div>
+      <span class="plus rise" style="--i:4">+</span>
+      <div class="rt rise" style="--i:5;--c:var(--fg)"><svg class="ic"><use href="#i-db"/></svg><div><div class="n">PostgreSQL</div><div class="s">data and events</div></div></div>
+      <span class="plus rise" style="--i:6">+</span>
+      <div class="rt rise" style="--i:7;--c:var(--l-plat)"><svg class="ic"><use href="#i-bucket"/></svg><div><div class="n"><span class="cyc"><span style="--k:0">AWS S3</span><span style="--k:1">GCS</span><span style="--k:2">Azure Blob</span><span style="--k:3">R2</span><span style="--k:4">SeaweedFS</span><span style="--k:5">Garage</span><span style="--k:6">RustFS</span><span style="--k:7">Ceph</span><span style="--k:8">local disk</span></span></div><div class="s">any bucket</div></div></div>
+    </div>
+    <div class="lbl2 rise" style="--i:8">inside git2</div>
+    <div class="inside">
+      <div class="ins rise" style="--i:9"><span class="r">services</span><span class="v" style="color:var(--hash)">Go</span></div>
+      <div class="ins rise" style="--i:10"><span class="r">service calls</span><span class="v">gRPC</span></div>
+      <div class="ins rise" style="--i:11"><span class="r">public API</span><span class="v">OpenAPI</span></div>
+      <div class="ins rise" style="--i:12"><span class="r">web UI</span><span class="v">React, static</span></div>
+      <div class="ins rise" style="--i:13"><span class="r">git</span><span class="v">git + go-git</span></div>
+      <div class="ins rise" style="--i:14"><span class="r">events</span><span class="v">PG outbox</span></div>
+      <div class="ins rise" style="--i:15"><span class="r">any bucket</span><span class="v">gocloud blob</span></div>
+      <div class="ins rise" style="--i:16"><span class="r">backup crypto</span><span class="v">age</span></div>
+      <div class="ins rise" style="--i:17"><span class="r">ship</span><span class="v">Docker · Helm</span></div>
+      <div class="ins rise" style="--i:18"><span class="r">telemetry</span><span class="v">OpenTelemetry</span></div>
+    </div>
+    <div class="lbl2 rise" style="--i:19">left out on purpose</div>
+    <div class="out rise" style="--i:20">
+      <div class="oc" style="--k:0"><b>MinIO</b><span>archived in 2026</span></div>
+      <div class="oc" style="--k:1"><b>Redis</b><span>Postgres is enough</span></div>
+      <div class="oc" style="--k:2"><b>NATS / Kafka</b><span>outbox in Postgres</span></div>
+      <div class="oc" style="--k:3"><b>Node in prod</b><span>the UI is static files</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- 14 · claude -->
+<section class="slide" data-sha="d3a6f90" data-msg="ci: building with claude" aria-label="Building with Claude">
+  <header class="hd">
+    <div class="eyebrow rise" style="--i:0"><b>$</b>claude</div>
+    <h2 class="t rise" style="--i:1">Building with Claude</h2>
+  </header>
+  <div class="claudewrap">
+    <svg class="loop rise" style="--i:2" viewBox="0 0 760 500" role="img" aria-label="The loop: contract, Claude builds, tests, review, merge, then the next contract.">
+      <circle class="ring" cx="380" cy="250" r="170"/>
+      <path class="ringhot draw" pathLength="1" style="--d:400ms" d="M380 80 A170 170 0 0 1 380 420 A170 170 0 0 1 380 80"/>
+      <circle class="stn pop" cx="380" cy="80" r="11" style="--d:500ms;stroke:var(--hash)"/>
+      <circle class="stn pop" cx="541.7" cy="197.5" r="11" style="--d:650ms"/>
+      <circle class="stn pop" cx="480" cy="387.5" r="11" style="--d:800ms"/>
+      <circle class="stn pop" cx="280" cy="387.5" r="11" style="--d:950ms"/>
+      <circle class="stn pop" cx="218.3" cy="197.5" r="11" style="--d:1100ms"/>
+      <text class="ll" x="380" y="30" text-anchor="middle">contract</text>
+      <text class="ls" x="380" y="56" text-anchor="middle">OpenAPI · proto</text>
+      <text class="ll" x="566" y="195">Claude builds</text>
+      <text class="ls" x="566" y="223">in your lane</text>
+      <text class="ll" x="500" y="428">tests</text>
+      <text class="ls" x="500" y="456">against mocks</text>
+      <text class="ll" x="260" y="428" text-anchor="end">review</text>
+      <text class="ls" x="260" y="456" text-anchor="end">by a teammate</text>
+      <text class="ll" x="194" y="195" text-anchor="end">merge</text>
+      <text class="ls" x="194" y="223" text-anchor="end">CI runs on main</text>
+      <text class="lc" x="380" y="250" text-anchor="middle">CLAUDE.md</text>
+      <text class="ls" x="380" y="284" text-anchor="middle">read every session</text>
+      <circle class="pkt" r="8"><animateMotion dur="9s" repeatCount="indefinite" path="M380 80 A170 170 0 0 1 380 420 A170 170 0 0 1 380 80"/></circle>
+    </svg>
+    <ul class="rules">
+      <li class="rise" style="--i:3"><div>One CLAUDE.md per service. <span>Scope, commands, conventions.</span></div></li>
+      <li class="rise" style="--i:4"><div>Claude works inside your lane's folders.</div></li>
+      <li class="rise" style="--i:5"><div><code>contracts/</code> changes by PR only, <span>approved by both owners.</span></div></li>
+      <li class="rise" style="--i:6"><div>Every PR ships with tests <span>and gets one human review.</span></div></li>
+    </ul>
+  </div>
+  <div class="rhythm">
+    <div class="rh rise" style="--i:7"><span class="k">daily</span><span class="v">short async update in chat</span></div>
+    <div class="rh rise" style="--i:8"><span class="k">every friday</span><span class="v">integration: main runs end to end</span></div>
+    <div class="rh rise" style="--i:9"><span class="k">each milestone</span><span class="v">live demo to the team</span></div>
+  </div>
+</section>
+
+<!-- 15 · week 1 -->
+<section class="slide" data-sha="2f8b7c1" data-msg="chore: week 1" aria-label="Week 1">
+  <header class="hd">
+    <div class="eyebrow rise" style="--i:0"><b>$</b>git checkout -b week-1</div>
+    <h2 class="t rise" style="--i:1">Week 1</h2>
+  </header>
+  <div class="w1">
+    <div class="w1row rise" style="--i:2;--c:var(--l-dash)"><button type="button" class="chk" id="w1-dash" aria-pressed="false" aria-label="Dash done"></button><span class="ln">Dash</span><span class="tk">Dash shell with sign-in</span></div>
+    <div class="w1row rise" style="--i:3;--c:var(--l-admin)"><button type="button" class="chk" id="w1-admin" aria-pressed="false" aria-label="Admin and Identity done"></button><span class="ln">Admin &amp; Identity</span><span class="tk">Admin shell, first admin user, tokens</span></div>
+    <div class="w1row rise" style="--i:4;--c:var(--l-git)"><button type="button" class="chk" id="w1-git" aria-pressed="false" aria-label="Git Core done"></button><span class="ln">Git Core</span><span class="tk">Create an empty repo through the API</span></div>
+    <div class="w1row rise" style="--i:5;--c:var(--l-ci)"><button type="button" class="chk" id="w1-ci" aria-pressed="false" aria-label="Pipelines done"></button><span class="ln">Pipelines</span><span class="tk"><code>.git2-ci.yml</code> spec, version 0</span></div>
+    <div class="w1row rise" style="--i:6;--c:var(--l-plat)"><button type="button" class="chk" id="w1-plat" aria-pressed="false" aria-label="Platform and Backup done"></button><span class="ln">Platform &amp; Backup</span><span class="tk"><code>docker compose up</code> runs everything</span></div>
+    <div class="w1row rise" style="--i:7;--c:var(--hash)"><button type="button" class="chk" id="w1-all" aria-pressed="false" aria-label="Everyone done"></button><span class="ln">everyone</span><span class="tk">Contracts v0 merged in <code>contracts/</code></span></div>
+  </div>
+</section>
+
+<!-- 16 · kickoff -->
+<section class="slide s-end" data-sha="7e0a4d2" data-msg="release: kickoff" aria-label="Kickoff">
+  <div class="endterm">
+    <div class="ln-in" style="--d:200ms"><span class="p">$</span><span data-type="300">git init git2</span></div>
+    <div class="o ln-in" style="--d:1150ms">Initialized empty Git repository in /home/team/git2/.git/</div>
+    <div class="ln-in" style="--d:1450ms"><span class="p">$</span><span data-type="1550">git commit --allow-empty -m "init git2"</span></div>
+    <div class="o ln-in" style="--d:3700ms">[main (root-commit) <span class="sha">9c1e07a</span>] init git2</div>
+    <div class="ln-in" style="--d:4000ms"><span class="p">$</span><span data-type="4100">git push origin main</span><span class="caret" aria-hidden="true"></span></div>
+  </div>
+  <div class="stretch rise" style="--i:58">
+    <span class="k">stretch goal, week 9</span>
+    <p class="big"><span>git2</span> hosts git2.</p>
+  </div>
+</section>
+
+<footer class="chrome">
+  <span class="brand">git<span>2</span></span>
+  <span class="commit"><span class="sha" id="sha">9c1e07a</span><span id="msg">init: git2</span></span>
+  <span class="headref"><b>HEAD</b> → main</span>
+  <div class="dots" id="dots"><span class="rail"></span><span class="fill" id="fill"></span></div>
+  <span class="count" id="count"><b>01</b> / 16</span>
+  <button type="button" class="navbtn" id="prev" aria-label="Previous slide">←</button>
+  <button type="button" class="navbtn" id="next" aria-label="Next slide">→</button>
+</footer>
+
+</main>
+</div>
+
+<script>
+(() => {
+  const stage = document.getElementById('stage');
+  const slides = Array.from(stage.querySelectorAll('.slide'));
+  const total = slides.length;
+  const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const pad = n => String(n).padStart(2, '0');
+  const shaEl = document.getElementById('sha');
+  const msgEl = document.getElementById('msg');
+  const countEl = document.getElementById('count');
+  const fillEl = document.getElementById('fill');
+  const DOT = 30;
+  let cur = -1;
+
+  // ---- fit the 1920×1080 stage to the window
+  function fit() {
+    const w = window.innerWidth, h = window.innerHeight;
+    const gutter = w < 700 ? 16 : 0;
+    const s = Math.min((w - gutter * 2) / 1920, h / 1080);
+    stage.style.setProperty('--s', Math.max(s, 0.05));
+  }
+  window.addEventListener('resize', fit);
+  fit();
+
+  // ---- per-viewer storage (owner names, week-1 checks)
+  const store = {
+    get(k) { try { return localStorage.getItem('git2-deck:' + k); } catch (e) { return null; } },
+    set(k, v) { try { localStorage.setItem('git2-deck:' + k, v); } catch (e) {} }
+  };
+  document.querySelectorAll('input[data-store]').forEach(inp => {
+    const v = store.get(inp.dataset.store);
+    if (v) inp.value = v;
+    inp.addEventListener('input', () => store.set(inp.dataset.store, inp.value));
+    inp.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === 'Escape') inp.blur(); });
+  });
+  document.querySelectorAll('.chk').forEach(b => {
+    const set = on => { b.setAttribute('aria-pressed', on ? 'true' : 'false'); b.closest('.w1row').classList.toggle('done', on); };
+    set(store.get(b.id) === '1');
+    b.addEventListener('click', () => { const on = b.getAttribute('aria-pressed') !== 'true'; set(on); store.set(b.id, on ? '1' : '0'); });
+  });
+
+  // ---- footer commit graph
+  const dotsEl = document.getElementById('dots');
+  const dots = slides.map((s, i) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'dot';
+    b.setAttribute('aria-label', 'Go to slide ' + (i + 1));
+    b.appendChild(document.createElement('i'));
+    b.addEventListener('click', () => go(i));
+    dotsEl.appendChild(b);
+    return b;
+  });
+
+  // ---- typed terminal text
+  let typeTimers = [];
+  function clearTyping() { typeTimers.forEach(clearTimeout); typeTimers = []; }
+  function runTyping(slide) {
+    clearTyping();
+    slide.querySelectorAll('[data-type]').forEach(el => {
+      if (el.dataset.full === undefined) el.dataset.full = el.textContent;
+      const full = el.dataset.full;
+      if (reduce) { el.textContent = full; return; }
+      el.textContent = '';
+      let i = 0;
+      const step = () => {
+        el.textContent = full.slice(0, ++i);
+        if (i < full.length) typeTimers.push(setTimeout(step, 30 + Math.random() * 45));
+      };
+      typeTimers.push(setTimeout(step, Number(el.dataset.type) || 0));
+    });
+  }
+  function finishTyping(slide) {
+    clearTyping();
+    slide.querySelectorAll('[data-type]').forEach(el => { if (el.dataset.full !== undefined) el.textContent = el.dataset.full; });
+  }
+
+  // ---- a looping state machine: apply(i) for each state, wait durations[i], repeat
+  function sequencer(apply, durations, opts) {
+    opts = opts || {};
+    let timer = 0, run = 0;
+    function stop() { run++; clearTimeout(timer); }
+    function start() {
+      stop();
+      const token = run;
+      if (reduce) { apply(opts.rest); return; }
+      let i = 0;
+      const tick = () => {
+        if (token !== run) return;
+        apply(i);
+        timer = setTimeout(() => { i = (i + 1) % durations.length; tick(); }, durations[i]);
+      };
+      if (opts.delay) { apply(opts.idle); timer = setTimeout(tick, opts.delay); }
+      else tick();
+    }
+    return { start, stop };
+  }
+
+  // slide 6: one container ↔ many
+  const morphEl = document.getElementById('morph');
+  const morph = sequencer(n => { morphEl.dataset.mode = n ? 'many' : 'one'; }, [3400, 4000], { delay: 1400, idle: 0, rest: 0 });
+  morphEl.querySelectorAll('.mode').forEach(b => b.addEventListener('click', () => { morph.stop(); morphEl.dataset.mode = b.dataset.m; }));
+
+  // slide 7: setup wizard
+  const wizEl = document.getElementById('wiz');
+  const wiz = sequencer(n => { wizEl.dataset.step = String(n); }, [700, 1700, 1700, 1700, 3200], { delay: 4200, idle: 0, rest: 4 });
+
+  // slide 8: backup → failure → restore
+  const bkEl = document.getElementById('bk');
+  const bk = sequencer(n => {
+    if (n === 0) bkEl.classList.add('reset');
+    for (let k = 1; k <= 4; k++) bkEl.classList.toggle('p' + k, k <= n);
+    if (n === 0) { void bkEl.getBoundingClientRect(); requestAnimationFrame(() => requestAnimationFrame(() => bkEl.classList.remove('reset'))); }
+  }, [1100, 2400, 1500, 2400, 3200], { delay: 600, idle: 0, rest: 4 });
+
+  // slide 10: spotlight each owner in turn
+  const blocks = Array.from(document.querySelectorAll('.ob'));
+  const spot = sequencer(n => { blocks.forEach((b, i) => b.classList.toggle('spot', i === n)); }, blocks.map(() => 2200), { delay: 1500, idle: -1, rest: -1 });
+
+  // slide 9: a packet walks the push through the services
+  const flow = (() => {
+    const root = document.getElementById('flow');
+    const svg = root.querySelector('svg');
+    const pk = svg.querySelector('#pk');
+    const chips = Array.from(root.querySelectorAll('.step'));
+    const $ = id => svg.querySelector('#' + id);
+    const STEPS = [
+      { seq: ['e1'], on: ['n-dev', 'n-gw'] },
+      { seq: ['e2', '-e2'], on: ['n-auth'] },
+      { seq: ['e3'], on: ['n-git'] },
+      { seq: ['e4'], on: ['n-bus'] },
+      { seq: ['e5'], on: ['n-ci'] },
+      { seq: ['e6'], on: ['n-run'] },
+      { seq: ['-e6', '-e5', 'e7'], on: ['n-collab'] },
+      { seq: ['e8'], on: ['n-web'] }
+    ];
+    let run = 0, timer = 0, raf = 0;
+    function points(seq) {
+      const out = [];
+      seq.forEach(item => {
+        const rev = item.charAt(0) === '-';
+        const p = $(rev ? item.slice(1) : item);
+        const L = p.getTotalLength();
+        for (let k = 0; k <= 30; k++) {
+          const q = p.getPointAtLength((rev ? 1 - k / 30 : k / 30) * L);
+          out.push([q.x, q.y]);
+        }
+      });
+      return out;
+    }
+    function paint(i) {
+      svg.querySelectorAll('.node2').forEach(n => n.classList.remove('lit', 'now'));
+      svg.querySelectorAll('.edge').forEach(e => e.classList.remove('hot'));
+      for (let j = 0; j <= i; j++) STEPS[j].on.forEach(id => $(id).classList.add(j === i ? 'now' : 'lit'));
+      STEPS[i].seq.forEach(item => $(item.replace('-', '')).classList.add('hot'));
+      chips.forEach((c, j) => { c.classList.toggle('now', j === i); c.classList.toggle('done', j < i); });
+    }
+    function place(x, y) { pk.setAttribute('cx', x.toFixed(1)); pk.setAttribute('cy', y.toFixed(1)); }
+    function move(pts, token, done) {
+      const acc = [0];
+      for (let k = 1; k < pts.length; k++) acc.push(acc[k - 1] + Math.hypot(pts[k][0] - pts[k - 1][0], pts[k][1] - pts[k - 1][1]));
+      const len = acc[acc.length - 1];
+      const ms = Math.min(1500, Math.max(650, len * 2.2));
+      const t0 = performance.now();
+      const tick = now => {
+        if (token !== run) return;
+        const t = Math.min(1, (now - t0) / ms);
+        const e = t < .5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+        const d = e * len;
+        let k = 1;
+        while (k < acc.length - 1 && acc[k] < d) k++;
+        const f = (d - acc[k - 1]) / ((acc[k] - acc[k - 1]) || 1);
+        place(pts[k - 1][0] + (pts[k][0] - pts[k - 1][0]) * f, pts[k - 1][1] + (pts[k][1] - pts[k - 1][1]) * f);
+        if (t < 1) raf = requestAnimationFrame(tick); else done();
+      };
+      raf = requestAnimationFrame(tick);
+    }
+    function play(i, token) {
+      if (token !== run) return;
+      paint(i);
+      const pts = points(STEPS[i].seq);
+      place(pts[0][0], pts[0][1]);
+      pk.setAttribute('opacity', '1');
+      move(pts, token, () => {
+        timer = setTimeout(() => {
+          if (token !== run) return;
+          if (i + 1 < STEPS.length) play(i + 1, token);
+          else timer = setTimeout(() => play(0, token), 2600);
+        }, 1200);
+      });
+    }
+    function stop() { run++; clearTimeout(timer); cancelAnimationFrame(raf); }
+    function start(from) {
+      stop();
+      if (reduce) { paint(from); return; }
+      play(from, run);
+    }
+    chips.forEach((c, j) => c.addEventListener('click', () => start(j)));
+    return { start: () => start(reduce ? STEPS.length - 1 : 0), stop };
+  })();
+
+  const effects = [
+    { root: morphEl, ctl: morph },
+    { root: wizEl, ctl: wiz },
+    { root: bkEl, ctl: bk },
+    { root: document.querySelector('.owners'), ctl: spot },
+    { root: document.getElementById('flow'), ctl: flow }
+  ];
+
+  // ---- navigation
+  function enter(s) {
+    runTyping(s);
+    effects.forEach(f => { if (s.contains(f.root)) f.ctl.start(); });
+  }
+  function leave(s) {
+    finishTyping(s);
+    effects.forEach(f => f.ctl.stop());
+  }
+  function go(n) {
+    n = Math.max(0, Math.min(total - 1, n));
+    if (n === cur) return;
+    if (cur >= 0) leave(slides[cur]);
+    slides.forEach((s, i) => {
+      s.classList.toggle('is-active', i === n);
+      s.classList.toggle('is-past', i < n);
+      s.setAttribute('aria-hidden', i === n ? 'false' : 'true');
+      s.inert = i !== n;
+    });
+    dots.forEach((d, i) => {
+      d.classList.toggle('now', i === n);
+      d.classList.toggle('done', i < n);
+      if (i === n) d.setAttribute('aria-current', 'step'); else d.removeAttribute('aria-current');
+    });
+    fillEl.style.width = (n * DOT) + 'px';
+    shaEl.textContent = slides[n].dataset.sha;
+    msgEl.textContent = slides[n].dataset.msg;
+    countEl.innerHTML = '<b>' + pad(n + 1) + '</b> / ' + pad(total);
+    cur = n;
+    enter(slides[n]);
+    try { history.replaceState(null, '', '#' + (n + 1)); } catch (e) {}
+  }
+
+  document.getElementById('prev').addEventListener('click', () => go(cur - 1));
+  document.getElementById('next').addEventListener('click', () => go(cur + 1));
+
+  function toggleFullscreen() {
+    try {
+      if (document.fullscreenElement) { document.exitFullscreen && document.exitFullscreen(); }
+      else if (document.documentElement.requestFullscreen) {
+        const p = document.documentElement.requestFullscreen();
+        if (p && p.catch) p.catch(() => {});
+      }
+    } catch (e) {}
+  }
+
+  window.addEventListener('keydown', e => {
+    const tg = e.target;
+    if (tg && (tg.tagName === 'INPUT' || tg.tagName === 'TEXTAREA' || tg.isContentEditable)) return;
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    const onButton = tg && tg.tagName === 'BUTTON';
+    if (e.key === 'ArrowRight' || e.key === 'PageDown' || (!onButton && (e.key === ' ' || e.key === 'Enter'))) { e.preventDefault(); go(cur + 1); }
+    else if (e.key === 'ArrowLeft' || e.key === 'PageUp' || e.key === 'Backspace') { e.preventDefault(); go(cur - 1); }
+    else if (e.key === 'Home') { e.preventDefault(); go(0); }
+    else if (e.key === 'End') { e.preventDefault(); go(total - 1); }
+    else if (e.key === 'f' || e.key === 'F') { toggleFullscreen(); }
+  });
+
+  let tx = null, ty = null;
+  stage.addEventListener('touchstart', e => { tx = e.touches[0].clientX; ty = e.touches[0].clientY; }, { passive: true });
+  stage.addEventListener('touchend', e => {
+    if (tx === null) return;
+    const dx = e.changedTouches[0].clientX - tx, dy = e.changedTouches[0].clientY - ty;
+    if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy)) go(cur + (dx < 0 ? 1 : -1));
+    tx = null;
+  });
+
+  window.addEventListener('hashchange', () => { const h = parseInt(location.hash.slice(1), 10); if (Number.isFinite(h)) go(h - 1); });
+  const start = parseInt((location.hash || '').slice(1), 10);
+  go(Number.isFinite(start) ? start - 1 : 0);
+})();
+</script>
+
+</body></html>
