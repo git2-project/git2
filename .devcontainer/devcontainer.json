@@ -1,0 +1,39 @@
+{
+  "name": "git2",
+
+  "dockerComposeFile": "docker-compose.yml",
+  "service": "app",
+  "workspaceFolder": "/workspace",
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "golang.Go",
+        "ms-azuretools.vscode-docker",
+        "ms-vscode.makefile-tools",
+        "Anthropic.claude-code"
+      ],
+      "settings": {
+        "go.useLanguageServer": true,
+        "go.formatTool": "goimports",
+        "[go]": {
+          "editor.formatOnSave": true,
+          "editor.codeActionsOnSave": { "source.organizeImports": "explicit" }
+        },
+        // Forward only ports a container process actually listens on, not every
+        // localhost:PORT printed in a terminal.
+        "remote.autoForwardPortsSource": "process"
+      }
+    }
+  },
+
+  "postCreateCommand": "go mod download",
+
+  "remoteUser": "root",
+
+  // Only what the app container serves: the Go API.
+  // Redis is a sibling compose service, reached as redis:6379.
+  "forwardPorts": [8080],
+
+  "shutdownAction": "stopCompose"
+}
