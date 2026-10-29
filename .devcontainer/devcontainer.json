@@ -11,6 +11,7 @@
         "golang.Go",
         "ms-azuretools.vscode-docker",
         "ms-vscode.makefile-tools",
+        "dbaeumer.vscode-eslint",
         "Anthropic.claude-code"
       ],
       "settings": {
@@ -27,13 +28,19 @@
     }
   },
 
-  "postCreateCommand": "go mod download",
+  // Node and pnpm for web/.
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": { "version": "22", "pnpmVersion": "9.15.0" }
+  },
+
+  "postCreateCommand": "go mod download && cd web && pnpm install",
 
   "remoteUser": "root",
 
-  // Only what the app container serves: the Go API.
-  // Redis is a sibling compose service, reached as redis:6379.
-  "forwardPorts": [8080],
+  // Only what the app container serves: the Go API and the web dev server
+  // (Admin is reached through Dash on 5173). Redis is a sibling compose
+  // service, reached as redis:6379.
+  "forwardPorts": [8080, 5173, 5174],
 
   "shutdownAction": "stopCompose"
 }
