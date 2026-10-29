@@ -1,0 +1,541 @@
+openapi: 3.1.0
+info:
+  title: git2 admin-api
+  version: 0.1.0-draft
+  description: |
+    The admin plane for WBS-3.1: users, roles and teams. Every operation is
+    `x-status: draft`: not implemented yet, and the shape may still change.
+    Design notes: docs/design/identity-v0.md.
+
+    Reads need the `admin` or `auditor` instance role; writes need `admin`.
+    The role is read from the database on every request, so a change takes
+    effect at once. Same conventions as auth-svc: `{"error": "..."}` bodies,
+    unknown fields rejected, faults answer 5xx.
+
+    **Paging** follows dash-api and git-svc: `page_size` (default 50, max 100)
+    and an opaque `page_token`; a response with more items carries
+    `next_page_token`.
+servers:
+  - url: /api
+
+security:
+  - bearer: []
+
+tags:
+  - name: roles
+  - name: users
+  - name: teams
+
+paths:
+  /admin/roles:
+    get:
+      tags: [roles]
+      operationId: listRoles
+      x-status: draft
+      summary: The fixed list of roles
+      responses:
+        '200':
+          description: All roles, instance and team scope.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [roles]
+                properties:
+                  roles:
+                    type: array
+                    items: { $ref: '#/components/schemas/Role' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+
+  /admin/users:
+    get:
+      tags: [users]
+      operationId: listUsers
+      x-status: draft
+      summary: List users, oldest first
+      parameters:
+        - name: q
+          in: query
+          description: Case-insensitive prefix match on username or email.
+          schema: { type: string, maxLength: 254 }
+        - name: role
+          in: query
+          schema: { $ref: '#/components/schemas/InstanceRole' }
+        - name: active
+          in: query
+          schema: { type: boolean }
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/PageToken'
+      responses:
+        '200':
+          description: One page.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UserPage' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+    post:
+      tags: [users]
+      operationId: createUser
+      x-status: draft
+      summary: Create an account
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateUserRequest' }
+      responses:
+        '201':
+          description: Created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminUser' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+
+  /admin/users/{user_id}:
+    parameters:
+      - $ref: '#/components/parameters/UserID'
+    get:
+      tags: [users]
+      operationId: getUser
+      x-status: draft
+      summary: One user with their teams
+      responses:
+        '200':
+          description: The user.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminUserDetail' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+    patch:
+      tags: [users]
+      operationId: updateUser
+      x-status: draft
+      summary: Change role, enable or disable, or rename
+      description: |
+        Setting `is_active` to false ends every session of the user and
+        rejects their access tokens at once. There is no delete: disabled
+        accounts keep their history.
+
+        An admin cannot demote or disable themselves, and the last active
+        admin cannot be demoted or disabled (409).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateUserRequest' }
+      responses:
+        '200':
+          description: Updated.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AdminUser' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+
+  /admin/teams:
+    get:
+      tags: [teams]
+      operationId: listTeams
+      x-status: draft
+      summary: List teams, oldest first
+      parameters:
+        - name: q
+          in: query
+          description: Prefix match on the team name.
+          schema: { type: string, maxLength: 39 }
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/PageToken'
+      responses:
+        '200':
+          description: One page.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TeamPage' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+    post:
+      tags: [teams]
+      operationId: createTeam
+      x-status: draft
+      summary: Create a team
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateTeamRequest' }
+      responses:
+        '201':
+          description: Created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Team' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+
+  /admin/teams/{team_id}:
+    parameters:
+      - $ref: '#/components/parameters/TeamID'
+    get:
+      tags: [teams]
+      operationId: getTeam
+      x-status: draft
+      summary: One team
+      responses:
+        '200':
+          description: The team.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Team' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+    patch:
+      tags: [teams]
+      operationId: updateTeam
+      x-status: draft
+      summary: Rename a team or change its description
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateTeamRequest' }
+      responses:
+        '200':
+          description: Updated.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Team' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+    delete:
+      tags: [teams]
+      operationId: deleteTeam
+      x-status: draft
+      summary: Delete a team and its memberships
+      responses:
+        '204':
+          description: Deleted.
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+
+  /admin/teams/{team_id}/members:
+    parameters:
+      - $ref: '#/components/parameters/TeamID'
+    get:
+      tags: [teams]
+      operationId: listTeamMembers
+      x-status: draft
+      summary: Members of a team
+      parameters:
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/PageToken'
+      responses:
+        '200':
+          description: One page.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TeamMemberPage' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+
+  /admin/teams/{team_id}/members/{user_id}:
+    parameters:
+      - $ref: '#/components/parameters/TeamID'
+      - $ref: '#/components/parameters/UserID'
+    put:
+      tags: [teams]
+      operationId: putTeamMember
+      x-status: draft
+      summary: Add a member or change their team role
+      description: Idempotent. 201 when the user was added, 200 when an existing membership changed or stayed the same.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PutTeamMemberRequest' }
+      responses:
+        '200':
+          description: Membership updated.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TeamMember' }
+        '201':
+          description: User added.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TeamMember' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+    delete:
+      tags: [teams]
+      operationId: deleteTeamMember
+      x-status: draft
+      summary: Remove a member
+      responses:
+        '204':
+          description: Removed.
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+
+components:
+  securitySchemes:
+    bearer:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    UserID:
+      name: user_id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    TeamID:
+      name: team_id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    PageToken:
+      name: page_token
+      in: query
+      description: '`next_page_token` of the previous page. Opaque.'
+      schema: { type: string }
+    PageSize:
+      name: page_size
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+
+  responses:
+    BadRequest:
+      description: Invalid body, query or page token.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Unauthorized:
+      description: Missing, expired or revoked access token.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Forbidden:
+      description: Signed in, but the instance role does not allow this.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    NotFound:
+      description: No such user, team or membership.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Conflict:
+      description: Name or email taken, or the change would leave no active admin.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Unavailable:
+      description: Database or Redis fault. Retry; do not drop tokens.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error: { type: string }
+
+    NextPageToken:
+      type: string
+      description: Present when more items exist. Pass it as `page_token`.
+
+    InstanceRole:
+      type: string
+      enum: [admin, auditor, user]
+
+    TeamRole:
+      type: string
+      enum: [maintainer, member]
+
+    Role:
+      type: object
+      required: [name, scope, description]
+      properties:
+        name: { type: string }
+        scope: { type: string, enum: [instance, team] }
+        description: { type: string }
+
+    Slug:
+      type: string
+      pattern: '^[a-z0-9][a-z0-9_-]{2,38}$'
+
+    AdminUser:
+      type: object
+      required: [id, email, username, role, is_active, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string, format: email, maxLength: 254 }
+        username: { $ref: '#/components/schemas/Slug' }
+        role: { $ref: '#/components/schemas/InstanceRole' }
+        is_active: { type: boolean }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    AdminUserDetail:
+      allOf:
+        - $ref: '#/components/schemas/AdminUser'
+        - type: object
+          required: [teams]
+          properties:
+            teams:
+              type: array
+              items:
+                type: object
+                required: [team, role]
+                properties:
+                  team: { $ref: '#/components/schemas/TeamRef' }
+                  role: { $ref: '#/components/schemas/TeamRole' }
+
+    UserRef:
+      type: object
+      required: [id, username]
+      properties:
+        id: { type: string, format: uuid }
+        username: { $ref: '#/components/schemas/Slug' }
+
+    UserPage:
+      type: object
+      required: [users]
+      properties:
+        users:
+          type: array
+          items: { $ref: '#/components/schemas/AdminUser' }
+        next_page_token: { $ref: '#/components/schemas/NextPageToken' }
+
+    CreateUserRequest:
+      type: object
+      additionalProperties: false
+      required: [email, username, password]
+      properties:
+        email: { type: string, format: email, maxLength: 254 }
+        username: { $ref: '#/components/schemas/Slug' }
+        password:
+          type: string
+          minLength: 8
+          maxLength: 72
+          description: Initial password; the user should change it.
+        role:
+          $ref: '#/components/schemas/InstanceRole'
+          default: user
+
+    UpdateUserRequest:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        email: { type: string, format: email, maxLength: 254 }
+        username: { $ref: '#/components/schemas/Slug' }
+        role: { $ref: '#/components/schemas/InstanceRole' }
+        is_active: { type: boolean }
+
+    TeamRef:
+      type: object
+      required: [id, name]
+      properties:
+        id: { type: string, format: uuid }
+        name: { $ref: '#/components/schemas/Slug' }
+
+    Team:
+      type: object
+      required: [id, name, description, member_count, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        name: { $ref: '#/components/schemas/Slug' }
+        description: { type: string, maxLength: 500 }
+        member_count: { type: integer, minimum: 0 }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    TeamPage:
+      type: object
+      required: [teams]
+      properties:
+        teams:
+          type: array
+          items: { $ref: '#/components/schemas/Team' }
+        next_page_token: { $ref: '#/components/schemas/NextPageToken' }
+
+    CreateTeamRequest:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name: { $ref: '#/components/schemas/Slug' }
+        description: { type: string, maxLength: 500, default: '' }
+
+    UpdateTeamRequest:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        name: { $ref: '#/components/schemas/Slug' }
+        description: { type: string, maxLength: 500 }
+
+    TeamMember:
+      type: object
+      required: [user, role, added_at]
+      properties:
+        user: { $ref: '#/components/schemas/UserRef' }
+        role: { $ref: '#/components/schemas/TeamRole' }
+        added_at: { type: string, format: date-time }
+
+    TeamMemberPage:
+      type: object
+      required: [members]
+      properties:
+        members:
+          type: array
+          items: { $ref: '#/components/schemas/TeamMember' }
+        next_page_token: { $ref: '#/components/schemas/NextPageToken' }
+
+    PutTeamMemberRequest:
+      type: object
+      additionalProperties: false
+      required: [role]
+      properties:
+        role: { $ref: '#/components/schemas/TeamRole' }
