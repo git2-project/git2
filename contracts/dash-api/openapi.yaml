@@ -1,0 +1,1201 @@
+openapi: 3.1.0
+info:
+  title: git2 dash-api
+  version: 0.1.0-draft
+  summary: Public REST API of the Dash plane (repositories, code browsing, merge requests, issues, pipelines).
+  description: |
+    Contract v0 (WBS-1.1). Owner: Dash lane (Bilge Bostanbaşı).
+
+    **Status.** Operations tagged `Repositories` and `Code browsing` are complete for v0:
+    WBS-6.1 builds against them from W2. Operations marked `x-status: draft` only fix the
+    shape of later work (merge requests W4, issues W5, pipelines W6) and will change.
+
+    **Authentication.** Every operation needs `Authorization: Bearer <access token>` from
+    auth-svc (`POST /api/auth/login`).
+
+    **Authorization.** git-svc and ci-svc trust their callers, so dash-api checks the
+    caller's access to the repository on every call. A repository the caller cannot read
+    answers `404`, never `403`, so its existence does not leak. `403` means the caller
+    can read the repository but not perform the action.
+
+    **Errors** use the same body as auth-svc: `{"error": "message"}`.
+
+    **Paging** follows git-svc: `page_size` (default 50, max 100) and an opaque
+    `page_token`; a response with more items carries `next_page_token`.
+
+    **Refs and paths** travel as query parameters, because branch names and file paths
+    contain `/`. `ref` accepts a branch, a tag or a full commit SHA; when it is omitted the
+    repository's default branch is used.
+servers:
+  - url: /api
+    description: Same origin as the web apps, behind the gateway
+security:
+  - bearer: []
+tags:
+  - name: Repositories
+    description: Create, list, get and delete repositories (WBS-5.1, W2).
+  - name: Code browsing
+    description: Branches, tags, directories, files and commits (WBS-6.1, W2-W3).
+  - name: Merge requests
+    description: Draft (WBS-8.2, W4)
+  - name: Issues
+    description: Draft (WBS-9.1, W5)
+  - name: Notifications
+    description: Draft (WBS-9.1, W5)
+  - name: Pipelines
+    description: Draft (WBS-10.5, W6). Aligns with the ci.v1 contract in git2-runner.
+
+paths:
+  # ---------------------------------------------------------------- Repositories
+  /repos:
+    get:
+      tags: [Repositories]
+      operationId: listRepositories
+      summary: List repositories the caller can read
+      parameters:
+        - name: owner
+          in: query
+          description: Only repositories of this user or organization.
+          schema: { $ref: "#/components/schemas/OwnerName" }
+        - $ref: "#/components/parameters/PageSize"
+        - $ref: "#/components/parameters/PageToken"
+      responses:
+        "200":
+          description: One page of repositories, newest first.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [repositories]
+                properties:
+                  repositories:
+                    type: array
+                    items: { $ref: "#/components/schemas/Repository" }
+                  next_page_token: { $ref: "#/components/schemas/NextPageToken" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      tags: [Repositories]
+      operationId: createRepository
+      summary: Create an empty repository
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateRepositoryRequest" }
+      responses:
+        "201":
+          description: Created.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Repository" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409":
+          description: The owner already has a repository with this name (case-insensitive).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /repos/{owner}/{repo}:
+    parameters:
+      - $ref: "#/components/parameters/Owner"
+      - $ref: "#/components/parameters/Repo"
+    get:
+      tags: [Repositories]
+      operationId: getRepository
+      summary: Get one repository
+      responses:
+        "200":
+          description: The repository.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Repository" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      tags: [Repositories]
+      operationId: deleteRepository
+      summary: Delete a repository and its Git data
+      description: Needs admin access to the repository. Cannot be undone.
+      responses:
+        "204": { description: Deleted. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  # --------------------------------------------------------------- Code browsing
+  /repos/{owner}/{repo}/branches:
+    parameters:
+      - $ref: "#/components/parameters/Owner"
+      - $ref: "#/components/parameters/Repo"
+    get:
+      tags: [Code browsing]
+      operationId: listBranches
+      summary: List branches, default branch first
+      parameters:
+        - name: q
+          in: query
+          description: Only branches whose name contains this text (case-insensitive), for the branch picker.
+          schema: { type: string, maxLength: 255 }
+        - $ref: "#/components/parameters/PageSize"
+        - $ref: "#/components/parameters/PageToken"
+      responses:
+        "200":
+          description: One page of branches.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [branches]
+                properties:
+                  branches:
+                    type: array
+                    items: { $ref: "#/components/schemas/Branch" }
+                  next_page_token: { $ref: "#/components/schemas/NextPageToken" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /repos/{owner}/{repo}/tags:
+    parameters:
+      - $ref: "#/components/parameters/Owner"
+      - $ref: "#/components/parameters/Repo"
+    get:
+      tags: [Code browsing]
+      operationId: listTags
+      summary: List tags, newest first
+      parameters:
+        - $ref: "#/components/parameters/PageSize"
+        - $ref: "#/components/parameters/PageToken"
+      responses:
+        "200":
+          description: One page of tags.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [tags]
+                properties:
+                  tags:
+                    type: array
+                    items: { $ref: "#/components/schemas/Tag" }
+                  next_page_token: { $ref: "#/components/schemas/NextPageToken" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /repos/{owner}/{repo}/tree:
+    parameters:
+      - $ref: "#/components/parameters/Owner"
+      - $ref: "#/components/parameters/Repo"
+    get:
+      tags: [Code browsing]
+      operationId: getTree
+      summary: List one directory
+      description: |
+        Entries of a single directory (not recursive), directories first, then by name.
+        An empty repository answers `200` with `empty: true` and no entries, so Dash can
+        show the "push your first commit" page.
+      parameters:
+        - $ref: "#/components/parameters/Ref"
+        - $ref: "#/components/parameters/DirPath"
+      responses:
+        "200":
+          description: The directory.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Tree" }
+        "400":
+          description: "`path` is a file, not a directory."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /repos/{owner}/{repo}/blob:
+    parameters:
+      - $ref: "#/components/parameters/Owner"
+      - $ref: "#/components/parameters/Repo"
+    get:
+      tags: [Code browsing]
+      operationId: getBlob
+      summary: Get one file for display
+      description: |
+        Text files up to 1 MiB come back whole as UTF-8. Larger text files are cut at
+        1 MiB with `truncated: true`. Binary files come back without content; Dash links
+        to `/raw` instead. Git LFS pointers come back with `lfs: true`.
+      parameters:
+        - $ref: "#/components/parameters/Ref"
+        - $ref: "#/components/parameters/FilePath"
+      responses:
+        "200":
+          description: The file.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Blob" }
+        "400":
+          description: "`path` is a directory, not a file."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /repos/{owner}/{repo}/raw:
+    parameters:
+      - $ref: "#/components/parameters/Owner"
+      - $ref: "#/components/parameters/Repo"
+    get:
+      tags: [Code browsing]
+      operationId: getRaw
+      summary: Download one file as bytes
+      parameters:
+        - $ref: "#/components/parameters/Ref"
+        - $ref: "#/components/parameters/FilePath"
+      responses:
+        "200":
+          description: The file's bytes. `Content-Disposition` carries the file name.
+          content:
+            application/octet-stream:
+              schema: { type: string, contentMediaType: application/octet-stream }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /repos/{owner}/{repo}/commits:
+    parameters:
+      - $ref: "#/components/parameters/Owner"
+      - $ref: "#/components/parameters/Repo"
+    get:
+      tags: [Code browsing]
+      operationId: listCommits
+      summary: List commits reachable from a ref, newest first
+      parameters:
+        - $ref: "#/components/parameters/Ref"
+        - name: path
+          in: query
+          description: Only commits that changed this file or directory (history view).
+          schema: { type: string, maxLength: 4096 }
+        - $ref: "#/components/parameters/PageSize"
+        - $ref: "#/components/parameters/PageToken"
+      responses:
+        "200":
+          description: One page of commits.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [commits]
+                properties:
+                  commits:
+                    type: array
+                    items: { $ref: "#/components/schemas/Commit" }
+                  next_page_token: { $ref: "#/components/schemas/NextPageToken" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /repos/{owner}/{repo}/commits/{sha}:
+    parameters:
+      - $ref: "#/components/parameters/Owner"
+      - $ref: "#/components/parameters/Repo"
+      - name: sha
+        in: path
+        required: true
+        description: Full 40-character SHA, or an unambiguous prefix of at least 7.
+        schema: { type: string, pattern: "^[0-9a-f]{7,40}$" }
+    get:
+      tags: [Code browsing]
+      operationId: getCommit
+      summary: Get one commit with its changes against the first parent
+      responses:
+        "200":
+          description: The commit.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CommitDetail" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  # ------------------------------------------------------ Merge requests (draft)
+  /repos/{owner}/{repo}/compare:
+    parameters:
+      - $ref: "#/components/parameters/Owner"
+      - $ref: "#/components/parameters/Repo"
+    get:
+      tags: [Merge requests]
+      operationId: compareRefs
+      summary: Diff between two refs, for the "new merge request" page
+      x-status: draft
+      parameters:
+        - { name: base, in: query, required: true, schema: { type: string } }
+        - { name: head, in: query, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Commits and file changes from base to head.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Diff" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /repos/{owner}/{repo}/merge-requests:
+    parameters:
+      - $ref: "#/components/parameters/Owner"
+      - $ref: "#/components/parameters/Repo"
+    get:
+      tags: [Merge requests]
+      operationId: listMergeRequests
+      summary: List merge requests
+      x-status: draft
+      parameters:
+        - { name: state, in: query, schema: { type: string, enum: [open, merged, closed, all], default: open } }
+        - $ref: "#/components/parameters/PageSize"
+        - $ref: "#/components/parameters/PageToken"
+      responses:
+        "200":
+          description: One page of merge requests.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  merge_requests: { type: array, items: { $ref: "#/components/schemas/MergeRequest" } }
+                  next_page_token: { $ref: "#/components/schemas/NextPageToken" }
+    post:
+      tags: [Merge requests]
+      operationId: createMergeRequest
+      summary: Create merge request
+      x-status: draft
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title, source_branch, target_branch]
+              properties:
+                title: { type: string, maxLength: 255 }
+                description: { type: string }
+                source_branch: { type: string }
+                target_branch: { type: string }
+      responses:
+        "201":
+          description: Created.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MergeRequest" }
+
+  /repos/{owner}/{repo}/merge-requests/{number}:
+    parameters:
+      - $ref: "#/components/parameters/Owner"
+      - $ref: "#/components/parameters/Repo"
+      - $ref: "#/components/parameters/Number"
+    get:
+      tags: [Merge requests]
+      operationId: getMergeRequest
+      summary: Get merge request
+      x-status: draft
+      responses:
+        "200":
+          description: The merge request.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MergeRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /repos/{owner}/{repo}/merge-requests/{number}/diff:
+    parameters:
+      - $ref: "#/components/parameters/Owner"
+      - $ref: "#/components/parameters/Repo"
+      - $ref: "#/components/parameters/Number"
+    get:
+      tags: [Merge requests]
+      operationId: getMergeRequestDiff
+      summary: Get merge request diff
+      x-status: draft
+      responses:
+        "200":
+          description: Changes of the merge request.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Diff" }
+
+  /repos/{owner}/{repo}/merge-requests/{number}/comments:
+    parameters:
+      - $ref: "#/components/parameters/Owner"
+      - $ref: "#/components/parameters/Repo"
+      - $ref: "#/components/parameters/Number"
+    get:
+      tags: [Merge requests]
+      operationId: listMergeRequestComments
+      summary: List merge request comments
+      x-status: draft
+      responses:
+        "200":
+          description: All comments, inline ones carry a position.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  comments: { type: array, items: { $ref: "#/components/schemas/ReviewComment" } }
+    post:
+      tags: [Merge requests]
+      operationId: createMergeRequestComment
+      summary: Create merge request comment
+      x-status: draft
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [body]
+              properties:
+                body: { type: string }
+                position: { $ref: "#/components/schemas/DiffPosition" }
+                reply_to: { type: string, description: ID of the comment this one answers. }
+      responses:
+        "201":
+          description: Created.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ReviewComment" }
+
+  /repos/{owner}/{repo}/merge-requests/{number}/approvals:
+    parameters:
+      - $ref: "#/components/parameters/Owner"
+      - $ref: "#/components/parameters/Repo"
+      - $ref: "#/components/parameters/Number"
+    post:
+      tags: [Merge requests]
+      operationId: approveMergeRequest
+      summary: Approve merge request
+      x-status: draft
+      responses:
+        "204": { description: Approved by the caller. }
+    delete:
+      tags: [Merge requests]
+      operationId: unapproveMergeRequest
+      summary: Withdraw approval
+      x-status: draft
+      responses:
+        "204": { description: The caller's approval was withdrawn. }
+
+  /repos/{owner}/{repo}/merge-requests/{number}/merge:
+    parameters:
+      - $ref: "#/components/parameters/Owner"
+      - $ref: "#/components/parameters/Repo"
+      - $ref: "#/components/parameters/Number"
+    post:
+      tags: [Merge requests]
+      operationId: mergeMergeRequest
+      summary: Merge a merge request
+      x-status: draft
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [strategy]
+              properties:
+                strategy: { type: string, enum: [merge_commit, squash, fast_forward] }
+      responses:
+        "200":
+          description: Merged.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MergeRequest" }
+        "409":
+          description: Conflicts, failed pipeline, missing approvals or branch protection block the merge.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  # -------------------------------------------------------------- Issues (draft)
+  /repos/{owner}/{repo}/issues:
+    parameters:
+      - $ref: "#/components/parameters/Owner"
+      - $ref: "#/components/parameters/Repo"
+    get:
+      tags: [Issues]
+      operationId: listIssues
+      summary: List issues
+      x-status: draft
+      parameters:
+        - { name: state, in: query, schema: { type: string, enum: [open, closed, all], default: open } }
+        - { name: label, in: query, schema: { type: string } }
+        - { name: milestone, in: query, schema: { type: string } }
+        - { name: assignee, in: query, schema: { type: string } }
+        - $ref: "#/components/parameters/PageSize"
+        - $ref: "#/components/parameters/PageToken"
+      responses:
+        "200":
+          description: One page of issues.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  issues: { type: array, items: { $ref: "#/components/schemas/Issue" } }
+                  next_page_token: { $ref: "#/components/schemas/NextPageToken" }
+    post:
+      tags: [Issues]
+      operationId: createIssue
+      summary: Create issue
+      x-status: draft
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/IssueInput" }
+      responses:
+        "201":
+          description: Created.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Issue" }
+
+  /repos/{owner}/{repo}/issues/{number}:
+    parameters:
+      - $ref: "#/components/parameters/Owner"
+      - $ref: "#/components/parameters/Repo"
+      - $ref: "#/components/parameters/Number"
+    get:
+      tags: [Issues]
+      operationId: getIssue
+      summary: Get issue
+      x-status: draft
+      responses:
+        "200":
+          description: The issue.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Issue" }
+    patch:
+      tags: [Issues]
+      operationId: updateIssue
+      summary: Update issue
+      x-status: draft
+      description: Change title, body, labels, milestone, assignees or state.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/IssueInput" }
+      responses:
+        "200":
+          description: Updated.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Issue" }
+
+  /repos/{owner}/{repo}/issues/{number}/comments:
+    parameters:
+      - $ref: "#/components/parameters/Owner"
+      - $ref: "#/components/parameters/Repo"
+      - $ref: "#/components/parameters/Number"
+    get:
+      tags: [Issues]
+      operationId: listIssueComments
+      summary: List issue comments
+      x-status: draft
+      responses:
+        "200":
+          description: Comments, oldest first.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  comments: { type: array, items: { $ref: "#/components/schemas/Comment" } }
+    post:
+      tags: [Issues]
+      operationId: createIssueComment
+      summary: Create issue comment
+      x-status: draft
+      description: "`@username` mentions in the body create notifications."
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [body]
+              properties:
+                body: { type: string }
+      responses:
+        "201":
+          description: Created.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Comment" }
+
+  /repos/{owner}/{repo}/labels:
+    parameters:
+      - $ref: "#/components/parameters/Owner"
+      - $ref: "#/components/parameters/Repo"
+    get:
+      tags: [Issues]
+      operationId: listLabels
+      summary: List labels
+      x-status: draft
+      responses:
+        "200":
+          description: All labels of the repository.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  labels: { type: array, items: { $ref: "#/components/schemas/Label" } }
+
+  /repos/{owner}/{repo}/milestones:
+    parameters:
+      - $ref: "#/components/parameters/Owner"
+      - $ref: "#/components/parameters/Repo"
+    get:
+      tags: [Issues]
+      operationId: listMilestones
+      summary: List milestones
+      x-status: draft
+      responses:
+        "200":
+          description: All milestones of the repository.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  milestones: { type: array, items: { $ref: "#/components/schemas/Milestone" } }
+
+  /notifications:
+    get:
+      tags: [Notifications]
+      operationId: listNotifications
+      summary: List notifications
+      x-status: draft
+      parameters:
+        - { name: unread, in: query, schema: { type: boolean, default: true } }
+        - $ref: "#/components/parameters/PageSize"
+        - $ref: "#/components/parameters/PageToken"
+      responses:
+        "200":
+          description: The caller's notifications, newest first.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  notifications: { type: array, items: { $ref: "#/components/schemas/Notification" } }
+                  next_page_token: { $ref: "#/components/schemas/NextPageToken" }
+
+  /notifications/{id}/read:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string } }
+    post:
+      tags: [Notifications]
+      operationId: markNotificationRead
+      summary: Mark notification read
+      x-status: draft
+      responses:
+        "204": { description: Marked as read. }
+
+  # ----------------------------------------------------------- Pipelines (draft)
+  /repos/{owner}/{repo}/pipelines:
+    parameters:
+      - $ref: "#/components/parameters/Owner"
+      - $ref: "#/components/parameters/Repo"
+    get:
+      tags: [Pipelines]
+      operationId: listPipelines
+      summary: List pipelines
+      x-status: draft
+      parameters:
+        - { name: ref, in: query, schema: { type: string } }
+        - $ref: "#/components/parameters/PageSize"
+        - $ref: "#/components/parameters/PageToken"
+      responses:
+        "200":
+          description: One page of pipelines, newest first.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  pipelines: { type: array, items: { $ref: "#/components/schemas/Pipeline" } }
+                  next_page_token: { $ref: "#/components/schemas/NextPageToken" }
+
+  /repos/{owner}/{repo}/pipelines/{id}:
+    parameters:
+      - $ref: "#/components/parameters/Owner"
+      - $ref: "#/components/parameters/Repo"
+      - { name: id, in: path, required: true, schema: { type: string } }
+    get:
+      tags: [Pipelines]
+      operationId: getPipeline
+      summary: Get pipeline
+      x-status: draft
+      responses:
+        "200":
+          description: The pipeline with its jobs, grouped by stage.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Pipeline" }
+
+  /repos/{owner}/{repo}/jobs/{id}/log:
+    parameters:
+      - $ref: "#/components/parameters/Owner"
+      - $ref: "#/components/parameters/Repo"
+      - { name: id, in: path, required: true, schema: { type: string } }
+    get:
+      tags: [Pipelines]
+      operationId: streamJobLog
+      summary: Stream job log
+      x-status: draft
+      description: |
+        Server-sent events while the job runs (dash-api relays ci-svc's StreamJobLog).
+        Each `data:` is a chunk of log text; the stream ends with `event: end` when the
+        job finishes. `offset` resumes after a reconnect.
+      parameters:
+        - { name: offset, in: query, schema: { type: integer, minimum: 0, default: 0 } }
+      responses:
+        "200":
+          description: Log stream.
+          content:
+            text/event-stream:
+              schema: { type: string }
+
+  /repos/{owner}/{repo}/jobs/{id}/artifacts:
+    parameters:
+      - $ref: "#/components/parameters/Owner"
+      - $ref: "#/components/parameters/Repo"
+      - { name: id, in: path, required: true, schema: { type: string } }
+    get:
+      tags: [Pipelines]
+      operationId: listJobArtifacts
+      summary: List job artifacts
+      x-status: draft
+      responses:
+        "200":
+          description: Artifacts of the job.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  artifacts:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name: { type: string }
+                        size: { type: integer }
+                        download_url: { type: string }
+
+components:
+  securitySchemes:
+    bearer:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Access token from auth-svc (`X-Access-Token` header of /api/auth/login).
+
+  parameters:
+    Owner:
+      name: owner
+      in: path
+      required: true
+      description: Name of the user or organization that owns the repository.
+      schema: { $ref: "#/components/schemas/OwnerName" }
+    Repo:
+      name: repo
+      in: path
+      required: true
+      schema: { $ref: "#/components/schemas/RepoName" }
+    Number:
+      name: number
+      in: path
+      required: true
+      description: Per-repository number, shown as `!12` for merge requests and `#12` for issues.
+      schema: { type: integer, minimum: 1 }
+    Ref:
+      name: ref
+      in: query
+      description: Branch, tag or full commit SHA. Defaults to the repository's default branch.
+      schema: { type: string, maxLength: 255 }
+    DirPath:
+      name: path
+      in: query
+      description: Directory relative to the repository root, without leading slash. Empty for the root.
+      schema: { type: string, maxLength: 4096, default: "" }
+    FilePath:
+      name: path
+      in: query
+      required: true
+      description: File relative to the repository root, without leading slash.
+      schema: { type: string, minLength: 1, maxLength: 4096 }
+    PageSize:
+      name: page_size
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+    PageToken:
+      name: page_token
+      in: query
+      description: "`next_page_token` of the previous page. Opaque."
+      schema: { type: string }
+
+  responses:
+    BadRequest:
+      description: The request is malformed or fails validation.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          example: { error: "name must not end with .git" }
+    Unauthorized:
+      description: Missing, invalid or expired access token. Clients refresh once, then sign out.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          example: { error: "missing or malformed Authorization header" }
+    Forbidden:
+      description: The caller can read the repository but may not do this.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          example: { error: "admin access to the repository is required" }
+    NotFound:
+      description: No such repository, ref or path, or the caller cannot read the repository.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          example: { error: "repository not found" }
+
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error: { type: string }
+
+    NextPageToken:
+      type: string
+      description: Present when more items exist. Pass it as `page_token`.
+
+    OwnerName:
+      type: string
+      description: Username or organization name, lowercase (auth-svc stores usernames lowercase).
+      pattern: "^[a-z0-9][a-z0-9-]{0,38}$"
+      example: ada
+
+    RepoName:
+      type: string
+      description: Same rules as git.v1 CreateRepositoryRequest.name.
+      pattern: "^[A-Za-z0-9_][A-Za-z0-9._-]{0,99}$"
+      example: billing-service
+
+    Owner:
+      type: object
+      required: [id, name, kind]
+      properties:
+        id: { type: string, format: uuid }
+        name: { $ref: "#/components/schemas/OwnerName" }
+        kind: { type: string, enum: [user, organization] }
+
+    UserRef:
+      type: object
+      required: [id, username]
+      properties:
+        id: { type: string, format: uuid }
+        username: { type: string, example: ada }
+
+    Repository:
+      type: object
+      required: [id, owner, name, full_name, default_branch, description, empty, clone_url, created_at, updated_at]
+      properties:
+        id: { type: string, description: git-svc repository ID. }
+        owner: { $ref: "#/components/schemas/Owner" }
+        name: { $ref: "#/components/schemas/RepoName" }
+        full_name: { type: string, example: ada/billing-service }
+        description: { type: string, maxLength: 2000 }
+        default_branch: { type: string, example: main }
+        empty: { type: boolean, description: True until the first push. }
+        clone_url: { type: string, format: uri, example: "https://git2.example.com/ada/billing-service.git" }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time, description: Metadata changes only; pushes do not change it. }
+
+    CreateRepositoryRequest:
+      type: object
+      required: [name]
+      additionalProperties: false
+      properties:
+        owner:
+          allOf: [{ $ref: "#/components/schemas/OwnerName" }]
+          description: Defaults to the caller. An organization needs create rights in it.
+        name: { $ref: "#/components/schemas/RepoName" }
+        description: { type: string, maxLength: 2000, default: "" }
+        default_branch: { type: string, maxLength: 255, default: main }
+
+    Branch:
+      type: object
+      required: [name, commit, default, protected]
+      properties:
+        name: { type: string, example: main }
+        commit: { $ref: "#/components/schemas/CommitRef" }
+        default: { type: boolean }
+        protected: { type: boolean, description: Always false until branch protection (WBS-7.1). }
+
+    Tag:
+      type: object
+      required: [name, commit]
+      properties:
+        name: { type: string, example: v1.0.0 }
+        commit: { $ref: "#/components/schemas/CommitRef" }
+        message: { type: [string, "null"], description: "Message of an annotated tag, null for a lightweight one." }
+
+    CommitRef:
+      type: object
+      required: [sha, title, committed_at]
+      properties:
+        sha: { type: string, pattern: "^[0-9a-f]{40}$" }
+        title: { type: string, description: First line of the message. }
+        committed_at: { type: string, format: date-time }
+
+    Signature:
+      type: object
+      required: [name, email, date]
+      properties:
+        name: { type: string }
+        email: { type: string }
+        date: { type: string, format: date-time }
+        user: { oneOf: [{ $ref: "#/components/schemas/UserRef" }, { type: "null" }], description: "git2 account matching the email, if any." }
+
+    Commit:
+      type: object
+      required: [sha, short_sha, title, message, author, committer, parent_shas]
+      properties:
+        sha: { type: string, pattern: "^[0-9a-f]{40}$" }
+        short_sha: { type: string, example: 4bdc553 }
+        title: { type: string }
+        message: { type: string }
+        author: { $ref: "#/components/schemas/Signature" }
+        committer: { $ref: "#/components/schemas/Signature" }
+        parent_shas: { type: array, items: { type: string } }
+
+    CommitDetail:
+      allOf:
+        - $ref: "#/components/schemas/Commit"
+        - type: object
+          required: [stats, files]
+          properties:
+            stats: { $ref: "#/components/schemas/DiffStats" }
+            files: { type: array, items: { $ref: "#/components/schemas/FileDiff" } }
+            truncated: { type: boolean, description: More than 300 files changed; the rest are left out. }
+
+    TreeEntry:
+      type: object
+      required: [name, path, type, mode, sha]
+      properties:
+        name: { type: string, example: README.md }
+        path: { type: string, example: docs/README.md }
+        type: { type: string, enum: [file, dir, symlink, submodule] }
+        mode: { type: string, example: "100644" }
+        sha: { type: string }
+        size: { type: [integer, "null"], description: "Bytes, files only." }
+
+    Tree:
+      type: object
+      required: [ref, commit_sha, path, empty, entries]
+      properties:
+        ref: { type: string, description: "The ref that was resolved, for example main." }
+        commit_sha: { type: string, description: Commit the listing was read from; links stay stable when the branch moves. }
+        path: { type: string }
+        empty: { type: boolean, description: The repository has no commits yet. }
+        entries: { type: array, items: { $ref: "#/components/schemas/TreeEntry" } }
+        last_commit:
+          oneOf: [{ $ref: "#/components/schemas/CommitRef" }, { type: "null" }]
+          description: Last commit that touched this directory, for the header row.
+
+    Blob:
+      type: object
+      required: [ref, commit_sha, path, name, size, binary, truncated, lfs]
+      properties:
+        ref: { type: string }
+        commit_sha: { type: string }
+        path: { type: string }
+        name: { type: string }
+        size: { type: integer, description: Size in bytes of the whole file. }
+        binary: { type: boolean }
+        lfs: { type: boolean, description: The file is a Git LFS pointer. }
+        truncated: { type: boolean }
+        content: { type: [string, "null"], description: UTF-8 text; null for binary files. }
+        language: { type: [string, "null"], description: "Shiki language ID guessed from the file name, for highlighting.", example: go }
+
+    DiffStats:
+      type: object
+      required: [additions, deletions, files_changed]
+      properties:
+        additions: { type: integer }
+        deletions: { type: integer }
+        files_changed: { type: integer }
+
+    FileDiff:
+      type: object
+      required: [status, old_path, new_path, additions, deletions, binary, truncated]
+      properties:
+        status: { type: string, enum: [added, modified, deleted, renamed, copied] }
+        old_path: { type: [string, "null"] }
+        new_path: { type: [string, "null"] }
+        additions: { type: integer }
+        deletions: { type: integer }
+        binary: { type: boolean }
+        truncated: { type: boolean, description: The patch is too large to show. }
+        patch: { type: [string, "null"], description: "Unified diff of this file, without the `diff --git` header." }
+
+    Diff:
+      type: object
+      x-status: draft
+      properties:
+        base_sha: { type: string }
+        head_sha: { type: string }
+        commits: { type: array, items: { $ref: "#/components/schemas/Commit" } }
+        stats: { $ref: "#/components/schemas/DiffStats" }
+        files: { type: array, items: { $ref: "#/components/schemas/FileDiff" } }
+
+    MergeRequest:
+      type: object
+      x-status: draft
+      properties:
+        number: { type: integer }
+        title: { type: string }
+        description: { type: string }
+        state: { type: string, enum: [open, merged, closed] }
+        author: { $ref: "#/components/schemas/UserRef" }
+        source_branch: { type: string }
+        target_branch: { type: string }
+        approvals: { type: array, items: { $ref: "#/components/schemas/UserRef" } }
+        mergeable: { type: boolean }
+        pipeline: { oneOf: [{ $ref: "#/components/schemas/PipelineSummary" }, { type: "null" }] }
+        created_at: { type: string, format: date-time }
+        merged_at: { type: [string, "null"], format: date-time }
+
+    DiffPosition:
+      type: object
+      x-status: draft
+      required: [commit_sha, path, side, line]
+      properties:
+        commit_sha: { type: string }
+        path: { type: string }
+        side: { type: string, enum: [old, new] }
+        line: { type: integer, minimum: 1 }
+
+    Comment:
+      type: object
+      x-status: draft
+      properties:
+        id: { type: string }
+        author: { $ref: "#/components/schemas/UserRef" }
+        body: { type: string }
+        created_at: { type: string, format: date-time }
+
+    ReviewComment:
+      x-status: draft
+      allOf:
+        - $ref: "#/components/schemas/Comment"
+        - type: object
+          properties:
+            position: { oneOf: [{ $ref: "#/components/schemas/DiffPosition" }, { type: "null" }] }
+            reply_to: { type: [string, "null"] }
+            outdated: { type: boolean, description: The line changed after the comment was written. }
+
+    Label:
+      type: object
+      x-status: draft
+      properties:
+        name: { type: string }
+        color: { type: string, pattern: "^#[0-9a-fA-F]{6}$" }
+
+    Milestone:
+      type: object
+      x-status: draft
+      properties:
+        id: { type: string }
+        title: { type: string }
+        due_on: { type: [string, "null"], format: date }
+        state: { type: string, enum: [open, closed] }
+
+    IssueInput:
+      type: object
+      x-status: draft
+      properties:
+        title: { type: string, maxLength: 255 }
+        body: { type: string }
+        labels: { type: array, items: { type: string } }
+        milestone: { type: [string, "null"] }
+        assignees: { type: array, items: { type: string } }
+        state: { type: string, enum: [open, closed] }
+
+    Issue:
+      type: object
+      x-status: draft
+      properties:
+        number: { type: integer }
+        title: { type: string }
+        body: { type: string }
+        state: { type: string, enum: [open, closed] }
+        author: { $ref: "#/components/schemas/UserRef" }
+        labels: { type: array, items: { $ref: "#/components/schemas/Label" } }
+        milestone: { oneOf: [{ $ref: "#/components/schemas/Milestone" }, { type: "null" }] }
+        assignees: { type: array, items: { $ref: "#/components/schemas/UserRef" } }
+        created_at: { type: string, format: date-time }
+        closed_at: { type: [string, "null"], format: date-time }
+
+    Notification:
+      type: object
+      x-status: draft
+      properties:
+        id: { type: string }
+        reason: { type: string, enum: [mention, assigned, review_requested, pipeline_failed] }
+        title: { type: string }
+        url: { type: string, description: "Dash path of the subject, for example /ada/billing-service/issues/12." }
+        read: { type: boolean }
+        created_at: { type: string, format: date-time }
+
+    PipelineSummary:
+      type: object
+      x-status: draft
+      properties:
+        id: { type: string }
+        status: { $ref: "#/components/schemas/PipelineStatus" }
+        ref: { type: string }
+        commit_sha: { type: string }
+
+    PipelineStatus:
+      type: string
+      x-status: draft
+      description: Final list follows ci.v1.
+      enum: [pending, running, success, failed, canceled]
+
+    Pipeline:
+      x-status: draft
+      allOf:
+        - $ref: "#/components/schemas/PipelineSummary"
+        - type: object
+          properties:
+            stages:
+              type: array
+              items:
+                type: object
+                properties:
+                  name: { type: string }
+                  jobs:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string }
+                        name: { type: string }
+                        status: { $ref: "#/components/schemas/PipelineStatus" }
+                        started_at: { type: [string, "null"], format: date-time }
+                        finished_at: { type: [string, "null"], format: date-time }
+            created_at: { type: string, format: date-time }
