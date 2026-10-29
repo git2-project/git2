@@ -1,0 +1,387 @@
+openapi: 3.1.0
+info:
+  title: git2 auth-svc
+  version: 0.1.0-draft
+  description: |
+    Sign-in for both planes: accounts, the access/refresh token pair, and the
+    one-time setup of the first admin. Design notes: docs/design/identity-v0.md.
+
+    Tokens are never in response bodies. Sign-in and refresh return them in
+    the `X-Access-Token` / `X-Refresh-Token` headers; send the access token as
+    `Authorization: Bearer <token>`.
+
+    Request bodies are a single JSON object of at most 64 KiB; unknown fields
+    are rejected with 400. Every error is `{"error": "..."}`. A database or
+    Redis fault answers 5xx, never 401, so clients only drop their tokens on a
+    real 401.
+
+    Operations marked `x-status: draft` are not implemented yet, and their
+    shape may still change. The others describe auth-svc as it runs today.
+servers:
+  - url: /api
+
+tags:
+  - name: auth
+  - name: setup
+
+paths:
+  /auth/register:
+    post:
+      tags: [auth]
+      operationId: register
+      summary: Create an account
+      description: |
+        Email and username are trimmed and lowercased before validation.
+        Rate limit: 10 requests per minute per client IP.
+
+        Planned: answers 403 when self-registration is turned off in the
+        instance settings (the default after setup).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RegisterRequest' }
+      responses:
+        '201':
+          description: Account created and active.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403':
+          description: Self-registration is turned off (planned).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '409':
+          description: '`email already registered` or `username already taken`.'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+  /auth/login:
+    post:
+      tags: [auth]
+      operationId: login
+      summary: Sign in with email and password
+      description: |
+        Starts a new session. An unknown email and a wrong password give the
+        same 401 in the same time. Rate limit: 20 per minute per client IP.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LoginRequest' }
+      responses:
+        '200':
+          description: Signed in.
+          headers:
+            X-Access-Token: { $ref: '#/components/headers/X-Access-Token' }
+            X-Refresh-Token: { $ref: '#/components/headers/X-Refresh-Token' }
+            X-Access-Expires-In: { $ref: '#/components/headers/X-Access-Expires-In' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LoginResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401':
+          description: '`invalid credentials`'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '403':
+          description: '`account is disabled`'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500': { $ref: '#/components/responses/ServerError' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+
+  /auth/refresh:
+    post:
+      tags: [auth]
+      operationId: refresh
+      summary: Swap a refresh token for a new token pair
+      description: |
+        Each refresh token works once. Presenting one that was already
+        rotated means it was copied: the whole session ends and the call
+        answers 401. Rate limit: 60 per minute per client IP.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RefreshRequest' }
+      responses:
+        '200':
+          description: New pair issued in the same session.
+          headers:
+            X-Access-Token: { $ref: '#/components/headers/X-Access-Token' }
+            X-Refresh-Token: { $ref: '#/components/headers/X-Refresh-Token' }
+            X-Access-Expires-In: { $ref: '#/components/headers/X-Access-Expires-In' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Message' }
+        '400':
+          description: '`refresh_token is required`'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401':
+          description: Token invalid, expired, reused, or the account is gone or disabled. Drop both tokens.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500': { $ref: '#/components/responses/ServerError' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+
+  /auth/logout:
+    post:
+      tags: [auth]
+      operationId: logout
+      summary: Revoke the presented tokens
+      description: |
+        Revokes the bearer access token (if valid) and, when given, the
+        refresh token's whole session. Always answers 200, so a client can
+        sign out even with tokens that are already invalid. Rate limit: 30
+        per minute per client IP.
+      security:
+        - {}
+        - bearer: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LogoutRequest' }
+      responses:
+        '200':
+          description: '`logged out`'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Message' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /auth/me:
+    get:
+      tags: [auth]
+      operationId: me
+      summary: The signed-in user
+      security:
+        - bearer: []
+      responses:
+        '200':
+          description: Current user.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404':
+          description: The account behind the token no longer exists.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '503':
+          description: Database fault. Today this answers 404; fixing it is planned.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /setup/status:
+    get:
+      tags: [setup]
+      operationId: setupStatus
+      x-status: draft
+      summary: Whether the first admin still has to be created
+      responses:
+        '200':
+          description: Setup state.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SetupStatus' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+
+  /setup/admin:
+    post:
+      tags: [setup]
+      operationId: setupAdmin
+      x-status: draft
+      summary: Create the first admin with the one-time setup token
+      description: |
+        The setup token is printed once in the server log at startup (or set
+        with `GIT2_SETUP_TOKEN`). It works once; afterwards this endpoint
+        answers 409. Rate limit: 10 per minute per client IP.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SetupAdminRequest' }
+      responses:
+        '201':
+          description: First admin created; sign in with /auth/login.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401':
+          description: '`invalid setup token`'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '409':
+          description: '`setup already completed`'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500': { $ref: '#/components/responses/ServerError' }
+
+components:
+  securitySchemes:
+    bearer:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Access token from `X-Access-Token`.
+
+  headers:
+    X-Access-Token:
+      description: 'Access JWT (HS256) for `Authorization: Bearer`.'
+      schema: { type: string }
+    X-Refresh-Token:
+      description: Refresh JWT for /auth/refresh and /auth/logout.
+      schema: { type: string }
+    X-Access-Expires-In:
+      description: Access token lifetime in seconds.
+      schema: { type: integer }
+
+  responses:
+    BadRequest:
+      description: Body is not a single valid JSON object, has unknown fields, or fails validation.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Unauthorized:
+      description: Missing, malformed, expired or revoked access token.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    TooManyRequests:
+      description: Per-IP rate limit hit.
+      headers:
+        Retry-After:
+          description: Seconds until the window resets.
+          schema: { type: integer }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    ServerError:
+      description: Unexpected server error.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Unavailable:
+      description: Database or Redis fault. Retry; do not drop tokens.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error: { type: string }
+
+    Message:
+      type: object
+      required: [message]
+      properties:
+        message: { type: string }
+
+    Email:
+      type: string
+      format: email
+      maxLength: 254
+      description: Stored lowercase.
+
+    Username:
+      type: string
+      pattern: '^[a-z0-9][a-z0-9_-]{2,38}$'
+      description: Stored lowercase; used in repository URLs.
+
+    Password:
+      type: string
+      minLength: 8
+      maxLength: 72
+      description: At most 72 bytes (bcrypt limit).
+
+    InstanceRole:
+      type: string
+      enum: [admin, auditor, user]
+
+    User:
+      type: object
+      required: [id, email, username, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        email: { $ref: '#/components/schemas/Email' }
+        username: { $ref: '#/components/schemas/Username' }
+        role:
+          $ref: '#/components/schemas/InstanceRole'
+          description: Draft, not returned yet. Becomes required when WBS-3.1 adds roles to auth-svc.
+        created_at: { type: string, format: date-time }
+
+    RegisterRequest:
+      type: object
+      additionalProperties: false
+      required: [email, username, password]
+      properties:
+        email: { $ref: '#/components/schemas/Email' }
+        username: { $ref: '#/components/schemas/Username' }
+        password: { $ref: '#/components/schemas/Password' }
+
+    LoginRequest:
+      type: object
+      additionalProperties: false
+      required: [email, password]
+      properties:
+        email: { type: string }
+        password: { type: string }
+
+    LoginResponse:
+      type: object
+      required: [message, user]
+      properties:
+        message: { type: string }
+        user: { $ref: '#/components/schemas/User' }
+
+    RefreshRequest:
+      type: object
+      additionalProperties: false
+      required: [refresh_token]
+      properties:
+        refresh_token: { type: string }
+
+    LogoutRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        refresh_token: { type: string }
+
+    SetupStatus:
+      type: object
+      required: [needs_setup]
+      properties:
+        needs_setup: { type: boolean }
+
+    SetupAdminRequest:
+      type: object
+      additionalProperties: false
+      required: [setup_token, email, username, password]
+      properties:
+        setup_token: { type: string }
+        email: { $ref: '#/components/schemas/Email' }
+        username: { $ref: '#/components/schemas/Username' }
+        password: { $ref: '#/components/schemas/Password' }
