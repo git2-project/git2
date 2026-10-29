@@ -15,6 +15,7 @@ Read `README.md` (layout, commands, auth API) and `docs/Charter.md` (scope, owne
 - JWTs are HS256 only with `exp` required (`jwt.WithValidMethods`, `jwt.WithExpirationRequired`).
 - A database or Redis fault answers 5xx, never 401: clients drop their tokens on a 401.
 - Other services protect routes with `authsvc.RequireAuth(jwt, redis)` and read the caller with `authsvc.UserID(ctx)`.
+- Every PR adds its lines to `CHANGELOG.md` under `## [Unreleased]` (Keep a Changelog groups, plus `Database` for each new migration file).
 - Tests: Redis-dependent code is tested against miniredis; Postgres code has `*_integration_test.go` files that skip unless `TEST_POSTGRES_DSN` is set.
 
 ## Docs lookup
