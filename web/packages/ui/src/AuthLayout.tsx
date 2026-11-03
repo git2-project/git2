@@ -1,5 +1,4 @@
 import type { CSSProperties, ReactNode } from "react";
-import { NavLink } from "react-router-dom";
 import { BranchBackdrop } from "./Backdrop";
 import { Logo } from "./Logo";
 import { ThemeToggle } from "./ThemeToggle";
@@ -31,8 +30,6 @@ interface AuthLayoutProps {
   // Admin are separate apps.
   otherPlane?: OtherPlane;
   intro: AuthIntro;
-  // Sign-in / create-account switch, shown when the app has registration.
-  tabs?: { signInPath: string; registerPath: string };
   title: string;
   subtitle?: string;
   children: ReactNode;
@@ -42,7 +39,7 @@ interface AuthLayoutProps {
 // Staggers the entrance animation of consecutive blocks.
 const rise = (step: number) => ({ "--g2-delay": `${step * 70}ms` }) as CSSProperties;
 
-export function AuthLayout({ plane, otherPlane, intro, tabs, title, subtitle, children, footer }: AuthLayoutProps) {
+export function AuthLayout({ plane, otherPlane, intro, title, subtitle, children, footer }: AuthLayoutProps) {
   return (
     <div className="g2-auth">
       <BranchBackdrop />
@@ -80,16 +77,6 @@ export function AuthLayout({ plane, otherPlane, intro, tabs, title, subtitle, ch
         </section>
 
         <section className="g2-auth-card g2-rise" style={rise(2)}>
-          {tabs && (
-            <nav className="g2-tabs" aria-label="Account">
-              <NavLink to={tabs.signInPath} replace>
-                Sign in
-              </NavLink>
-              <NavLink to={tabs.registerPath} replace>
-                Create account
-              </NavLink>
-            </nav>
-          )}
           <div className="g2-auth-heading">
             <h1>{title}</h1>
             {subtitle && <p className="g2-muted">{subtitle}</p>}

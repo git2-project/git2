@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { Link, Navigate, useLocation, useNavigate, type Location } from "react-router-dom";
+import { Navigate, useLocation, useNavigate, type Location } from "react-router-dom";
 import { AuthLayout, type AuthIntro, type OtherPlane } from "./AuthLayout";
 import { useAuth } from "./AuthProvider";
 import { Field, PasswordField } from "./Field";
@@ -11,11 +11,9 @@ interface SignInPageProps {
   plane: string;
   intro: AuthIntro;
   otherPlane?: OtherPlane;
-  // Route of the registration page, if this app has one.
-  registerPath?: string;
 }
 
-export function SignInPage({ plane, intro, otherPlane, registerPath }: SignInPageProps) {
+export function SignInPage({ plane, intro, otherPlane }: SignInPageProps) {
   const { status, sessionExpired, signIn } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
@@ -48,16 +46,8 @@ export function SignInPage({ plane, intro, otherPlane, registerPath }: SignInPag
       plane={plane}
       otherPlane={otherPlane}
       intro={intro}
-      tabs={registerPath ? { signInPath: location.pathname, registerPath } : undefined}
       title={`Sign in to git2 ${plane}`}
-      subtitle="Welcome back. Sign in with your email and password."
-      footer={
-        registerPath && (
-          <>
-            No account yet? <Link to={registerPath}>Create one</Link>
-          </>
-        )
-      }
+      subtitle="Sign in with the account your administrator gave you."
     >
       <form className="g2-form" onSubmit={onSubmit} noValidate>
         {sessionExpired && !error && (

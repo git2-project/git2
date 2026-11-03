@@ -6,7 +6,6 @@ export { AppShell } from "./AppShell";
 export { Field, PasswordField } from "./Field";
 export * from "./icons";
 export { Logo } from "./Logo";
-export { RegisterPage } from "./RegisterPage";
 export { RequireAuth } from "./RequireAuth";
 export { SignInPage } from "./SignInPage";
 export { initTheme, setTheme, storedTheme, systemTheme } from "./theme";
