@@ -223,8 +223,14 @@ func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) Me(w http.ResponseWriter, r *http.Request) {
 	u, err := h.deps.Users.FindByID(r.Context(), UserID(r.Context()))
-	if err != nil {
+	switch {
+	case errors.Is(err, ErrNotFound):
 		httpx.Error(w, http.StatusNotFound, "user not found")
+		return
+	case err != nil:
+		// A database fault is neither "no such user" nor "signed out".
+		slog.Error("me: find user", "err", err)
+		httpx.Error(w, http.StatusServiceUnavailable, "could not load your account, try again")
 		return
 	}
 	httpx.JSON(w, http.StatusOK, toUserResponse(u))

@@ -274,6 +274,27 @@ func TestMe(t *testing.T) {
 	if rec := h.do(http.MethodGet, "/api/auth/me", refresh, nil); rec.Code != http.StatusUnauthorized {
 		t.Errorf("refresh token as bearer: status %d, want 401", rec.Code)
 	}
+
+	t.Run("database fault is 503, not 404 or 401", func(t *testing.T) {
+		h.store.setFail(errors.New("db down"))
+		t.Cleanup(func() { h.store.setFail(nil) })
+		if rec := h.do(http.MethodGet, "/api/auth/me", access, nil); rec.Code != http.StatusServiceUnavailable {
+			t.Errorf("status %d, want 503 (body %s)", rec.Code, rec.Body)
+		}
+	})
+
+	t.Run("account gone is 404", func(t *testing.T) {
+		h.store.mu.Lock()
+		for id, u := range h.store.users {
+			if u.Email == "ada@example.com" {
+				delete(h.store.users, id)
+			}
+		}
+		h.store.mu.Unlock()
+		if rec := h.do(http.MethodGet, "/api/auth/me", access, nil); rec.Code != http.StatusNotFound {
+			t.Errorf("status %d, want 404 (body %s)", rec.Code, rec.Body)
+		}
+	})
 }
 
 func TestRefreshRotatesAndDetectsReuse(t *testing.T) {

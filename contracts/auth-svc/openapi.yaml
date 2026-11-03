@@ -183,7 +183,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
         '503':
-          description: Database fault. Today this answers 404; fixing it is planned.
+          description: Database fault. Keep the tokens and try again.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }

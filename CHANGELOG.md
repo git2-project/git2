@@ -19,6 +19,7 @@ Every PR adds its lines under `## [Unreleased]`: one line per change, starting w
 
 ### Fixed
 - auth-svc: `password_hash` stored as `text`; email and username enforced lowercase
+- auth-svc: `GET /api/auth/me` answers 503 on a database fault instead of 404
 
 ### Database
 - `001_auth_users.sql`: `auth_svc` schema and `auth_svc.users`
