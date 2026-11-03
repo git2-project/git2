@@ -24,8 +24,9 @@ info:
     `page_token`; a response with more items carries `next_page_token`.
 
     **Refs and paths** travel as query parameters, because branch names and file paths
-    contain `/`. `ref` accepts a branch, a tag or a full commit SHA; when it is omitted the
-    repository's default branch is used.
+    contain `/`. `ref` accepts a branch, a tag or a commit SHA (full, or an unambiguous
+    prefix of at least 7 characters); when it is omitted the repository's default branch
+    is used.
 servers:
   - url: /api
     description: Same origin as the web apps, behind the gateway
@@ -154,6 +155,7 @@ paths:
                     type: array
                     items: { $ref: "#/components/schemas/Branch" }
                   next_page_token: { $ref: "#/components/schemas/NextPageToken" }
+        "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
 
@@ -181,6 +183,7 @@ paths:
                     type: array
                     items: { $ref: "#/components/schemas/Tag" }
                   next_page_token: { $ref: "#/components/schemas/NextPageToken" }
+        "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
 
@@ -259,6 +262,11 @@ paths:
           content:
             application/octet-stream:
               schema: { type: string, contentMediaType: application/octet-stream }
+        "400":
+          description: "`path` is a directory, not a file."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
 
@@ -291,6 +299,7 @@ paths:
                     type: array
                     items: { $ref: "#/components/schemas/Commit" }
                   next_page_token: { $ref: "#/components/schemas/NextPageToken" }
+        "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
 
@@ -822,7 +831,9 @@ components:
     Ref:
       name: ref
       in: query
-      description: Branch, tag or full commit SHA. Defaults to the repository's default branch.
+      description: |
+        Branch, tag or commit SHA (full, or an unambiguous prefix of at least 7 characters).
+        Defaults to the repository's default branch.
       schema: { type: string, maxLength: 255 }
     DirPath:
       name: path
@@ -884,8 +895,10 @@ components:
 
     OwnerName:
       type: string
-      description: Username or organization name, lowercase (auth-svc stores usernames lowercase).
-      pattern: "^[a-z0-9][a-z0-9-]{0,38}$"
+      description: |
+        Username or organization name, lowercase. Same rule as auth-svc usernames
+        (`usernamePattern` in auth-svc/user.go); organizations follow it too.
+      pattern: "^[a-z0-9][a-z0-9_-]{2,38}$"
       example: ada
 
     RepoName:

@@ -17,7 +17,7 @@
 | Issues, labels, milestones, notifications | Draft | WBS-9.1, W5 |
 | Pipelines, job logs, artifacts | Draft, to align with `ci.v1` in git2-runner | WBS-10.5, W6 |
 
-Draft operations fix the shape only; they still lack error responses (the 21 `operation-4xx-response` lint warnings) and will change.
+Draft operations fix the shape only; they still lack error responses (the 21 `operation-4xx-response` lint warnings; the 22nd, `info-license`, goes away once the project picks a license) and will change.
 
 ## What it depends on
 
