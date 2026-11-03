@@ -21,7 +21,7 @@ type UserStore interface {
 
 // auth-svc owns the auth_svc schema (one schema per service). Not "auth":
 // Supabase reserves that schema for its own Auth product.
-const userColumns = `id, email, username, password_hash, is_active, created_at, updated_at`
+const userColumns = `id, email, username, password_hash, is_active, role, created_at, updated_at`
 
 type PostgresStore struct {
 	db *pgxpool.Pool
@@ -33,7 +33,7 @@ func NewPostgresStore(db *pgxpool.Pool) *PostgresStore {
 
 func scanUser(row pgx.Row) (User, error) {
 	var u User
-	err := row.Scan(&u.ID, &u.Email, &u.Username, &u.PasswordHash, &u.IsActive, &u.CreatedAt, &u.UpdatedAt)
+	err := row.Scan(&u.ID, &u.Email, &u.Username, &u.PasswordHash, &u.IsActive, &u.Role, &u.CreatedAt, &u.UpdatedAt)
 	return u, err
 }
 
@@ -44,11 +44,14 @@ func (s *PostgresStore) Create(ctx context.Context, u User) (User, error) {
 	if err != nil {
 		return User{}, fmt.Errorf("generate user id: %w", err)
 	}
+	if u.Role == "" {
+		u.Role = RoleUser
+	}
 	const q = `
-		INSERT INTO auth_svc.users (id, email, username, password_hash, is_active)
-		VALUES ($1, $2, $3, $4, $5)
+		INSERT INTO auth_svc.users (id, email, username, password_hash, is_active, role)
+		VALUES ($1, $2, $3, $4, $5, $6)
 		RETURNING ` + userColumns
-	created, err := scanUser(s.db.QueryRow(ctx, q, id, u.Email, u.Username, u.PasswordHash, u.IsActive))
+	created, err := scanUser(s.db.QueryRow(ctx, q, id, u.Email, u.Username, u.PasswordHash, u.IsActive, u.Role))
 	if err != nil {
 		switch {
 		case isUniqueViolation(err, "users_email_key"):

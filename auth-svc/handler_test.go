@@ -44,6 +44,9 @@ func (s *memStore) Create(_ context.Context, u User) (User, error) {
 		}
 	}
 	u.ID = uuid.New()
+	if u.Role == "" {
+		u.Role = RoleUser
+	}
 	u.CreatedAt = time.Now()
 	u.UpdatedAt = u.CreatedAt
 	s.users[u.ID] = u
@@ -83,6 +86,17 @@ func (s *memStore) setFail(err error) {
 	s.fail = err
 }
 
+func (s *memStore) setRole(email string, role Role) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for id, u := range s.users {
+		if u.Email == email {
+			u.Role = role
+			s.users[id] = u
+		}
+	}
+}
+
 func (s *memStore) setActive(email string, active bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -98,6 +112,8 @@ type harness struct {
 	t      *testing.T
 	router http.Handler
 	store  *memStore
+	jwt    *authjwt.Manager
+	redis  *redis.Client
 }
 
 func newHarness(t *testing.T) *harness {
@@ -107,9 +123,10 @@ func newHarness(t *testing.T) *harness {
 	t.Cleanup(func() { _ = rdb.Close() })
 
 	store := newMemStore()
+	jwtMgr := authjwt.NewManager("test-secret-that-is-at-least-32-chars", time.Minute, time.Hour)
 	h, err := NewHandler(Deps{
 		Users: store,
-		JWT:   authjwt.NewManager("test-secret-that-is-at-least-32-chars", time.Minute, time.Hour),
+		JWT:   jwtMgr,
 		Redis: rdb,
 	})
 	if err != nil {
@@ -117,7 +134,7 @@ func newHarness(t *testing.T) *harness {
 	}
 	r := chi.NewRouter()
 	r.Route("/api", h.Mount)
-	return &harness{t: t, router: r, store: store}
+	return &harness{t: t, router: r, store: store, jwt: jwtMgr, redis: rdb}
 }
 
 func (h *harness) do(method, path, bearer string, body any) *httptest.ResponseRecorder {
@@ -173,6 +190,9 @@ func TestRegister(t *testing.T) {
 	}
 	if got.Email != "ada@example.com" || got.Username != "ada" {
 		t.Errorf("stored %q / %q, want normalized ada@example.com / ada", got.Email, got.Username)
+	}
+	if got.Role != RoleUser {
+		t.Errorf("role = %q, want %q for a new account", got.Role, RoleUser)
 	}
 	if strings.Contains(rec.Body.String(), "password") {
 		t.Errorf("response leaks a password field: %s", rec.Body)

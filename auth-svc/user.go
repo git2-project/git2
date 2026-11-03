@@ -22,8 +22,10 @@ type User struct {
 	Username     string
 	PasswordHash string
 	IsActive     bool
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
+	// Role is the user's instance role (admin, auditor or user).
+	Role      Role
+	CreatedAt time.Time
+	UpdatedAt time.Time
 }
 
 // Usernames end up in repository URLs (/<username>/<repo>), so they are

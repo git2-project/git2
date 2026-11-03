@@ -323,14 +323,14 @@ components:
 
     User:
       type: object
-      required: [id, email, username, created_at]
+      required: [id, email, username, role, created_at]
       properties:
         id: { type: string, format: uuid }
         email: { $ref: '#/components/schemas/Email' }
         username: { $ref: '#/components/schemas/Username' }
         role:
           $ref: '#/components/schemas/InstanceRole'
-          description: Draft, not returned yet. Becomes required when WBS-3.1 adds roles to auth-svc.
+          description: The instance role. New accounts get `user`.
         created_at: { type: string, format: date-time }
 
     RegisterRequest:

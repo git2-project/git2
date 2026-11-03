@@ -9,6 +9,8 @@ Every PR adds its lines under `## [Unreleased]`: one line per change, starting w
 ### Added
 - auth-svc: `POST /api/auth/register`, `/login`, `/refresh`, `/logout` and `GET /api/auth/me`; tokens in `X-Access-Token` / `X-Refresh-Token` headers, refresh sessions rotated in Redis, per-IP rate limits on the public routes
 - auth-svc: `RequireAuth` middleware and `UserID(ctx)` for other services
+- auth-svc: instance role on every user (`admin`, `auditor`, `user`; new accounts get `user`), returned as `role` by register, login and `/me`
+- auth-svc: role → permission table (`roles.go`) and `RequirePermission` middleware for admin routes; the role is read from the database on every request
 - internal: shared config, Postgres pool, Redis client, JWT (HS256), bcrypt, HTTP helpers and rate limiting
 - dev: devcontainer, `make run` / `tests` / `deps` / `build`, migration runner
 - contracts: OpenAPI v0 for auth-svc (`contracts/auth-svc/`) and admin-api users, roles and teams (`contracts/admin-api/`)

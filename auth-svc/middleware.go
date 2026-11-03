@@ -2,6 +2,8 @@ package authsvc
 
 import (
 	"context"
+	"errors"
+	"log/slog"
 	"net/http"
 	"strings"
 
@@ -36,6 +38,47 @@ func RequireAuth(jwtMgr *authjwt.Manager, rdb *redis.Client) func(http.Handler) 
 				return
 			}
 			next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), claimsKey, claims)))
+		})
+	}
+}
+
+// UserFinder is what RequirePermission needs to look the caller up.
+// PostgresStore implements it.
+type UserFinder interface {
+	FindByID(ctx context.Context, id uuid.UUID) (User, error)
+}
+
+// RequirePermission lets the request through only when the caller's instance
+// role grants p. It must run after RequireAuth. The role is read from the
+// database on every request, never from the token, so a demotion takes
+// effect at once instead of when the access token expires.
+//
+//	401  no authenticated caller, or the account is gone or disabled
+//	403  signed in, but the role does not grant p
+//	503  the database could not be reached (never 401: clients drop tokens on 401)
+func RequirePermission(users UserFinder, p Permission) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			id := UserID(r.Context())
+			if id == uuid.Nil {
+				httpx.Error(w, http.StatusUnauthorized, "authentication required")
+				return
+			}
+			u, err := users.FindByID(r.Context(), id)
+			switch {
+			case errors.Is(err, ErrNotFound) || (err == nil && !u.IsActive):
+				httpx.Error(w, http.StatusUnauthorized, "account is not available")
+				return
+			case err != nil:
+				slog.Error("require permission: find user", "err", err)
+				httpx.Error(w, http.StatusServiceUnavailable, "could not check permissions, try again")
+				return
+			}
+			if !Can(u.Role, p) {
+				httpx.Error(w, http.StatusForbidden, "your role does not allow this")
+				return
+			}
+			next.ServeHTTP(w, r)
 		})
 	}
 }

@@ -40,6 +40,9 @@ func TestPostgresStore(t *testing.T) {
 	if created.ID == uuid.Nil || created.CreatedAt.IsZero() {
 		t.Errorf("Create did not return db-populated fields: %+v", created)
 	}
+	if created.Role != RoleUser {
+		t.Errorf("Create role = %q, want default %q", created.Role, RoleUser)
+	}
 
 	if _, err := store.Create(ctx, User{Email: email, Username: "other-" + suffix, PasswordHash: "x"}); !errors.Is(err, ErrEmailExists) {
 		t.Errorf("duplicate email err = %v, want ErrEmailExists", err)
@@ -56,5 +59,50 @@ func TestPostgresStore(t *testing.T) {
 	}
 	if _, err := store.FindByID(ctx, uuid.New()); !errors.Is(err, ErrNotFound) {
 		t.Errorf("FindByID(missing) err = %v, want ErrNotFound", err)
+	}
+}
+
+// TestRolesSeedMatchesCode keeps the role constants in roles.go and the seed
+// in 004_auth_roles_teams.sql in step: a role in one but not the other would
+// either fail a foreign key or grant nothing.
+func TestRolesSeedMatchesCode(t *testing.T) {
+	dsn := os.Getenv("TEST_POSTGRES_DSN")
+	if dsn == "" {
+		t.Skip("TEST_POSTGRES_DSN not set")
+	}
+	ctx := context.Background()
+	db, err := database.NewPostgresPool(ctx, dsn, 2)
+	if err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	t.Cleanup(db.Close)
+
+	rows, err := db.Query(ctx, `SELECT name, scope FROM auth_svc.roles`)
+	if err != nil {
+		t.Fatalf("query roles: %v", err)
+	}
+	got := map[Role]string{}
+	for rows.Next() {
+		var name, scope string
+		if err := rows.Scan(&name, &scope); err != nil {
+			t.Fatalf("scan: %v", err)
+		}
+		got[Role(name)] = scope
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("rows: %v", err)
+	}
+
+	want := map[Role]string{
+		RoleAdmin: "instance", RoleAuditor: "instance", RoleUser: "instance",
+		RoleMaintainer: "team", RoleMember: "team",
+	}
+	if len(got) != len(want) {
+		t.Errorf("auth_svc.roles has %d roles, code has %d: %v", len(got), len(want), got)
+	}
+	for r, scope := range want {
+		if got[r] != scope {
+			t.Errorf("role %q: scope in db = %q, want %q", r, got[r], scope)
+		}
 	}
 }

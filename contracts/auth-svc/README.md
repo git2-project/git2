@@ -13,7 +13,7 @@
 | Group | State | Needed by |
 |---|---|---|
 | Register, login, refresh, logout, me | Implemented; the spec matches the running service | Dash and Admin sign-in (WBS-2.2), now |
-| `role` on the user | Draft | Admin access check, WBS-3.1, W2 |
+| `role` on the user | Implemented | Admin access check, WBS-3.1, W2 |
 | First-admin setup (`/setup/status`, `/setup/admin`) | Draft (`x-status: draft`) | Setup wizard, WBS-11.1, W6 |
 
 ## Rules clients rely on

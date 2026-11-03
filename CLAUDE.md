@@ -14,7 +14,7 @@ Read `README.md` (layout, commands, auth API) and `docs/Charter.md` (scope, owne
 - Tokens travel in `X-Access-Token` / `X-Refresh-Token` response headers, never in bodies. Refresh sessions are a Redis whitelist (`sess:<sid>` = current JTI) rotated by one Lua compare-and-swap (`rotateSession`), never GET-then-SET; revoked access JTIs are `revoked:<jti>`.
 - JWTs are HS256 only with `exp` required (`jwt.WithValidMethods`, `jwt.WithExpirationRequired`).
 - A database or Redis fault answers 5xx, never 401: clients drop their tokens on a 401.
-- Other services protect routes with `authsvc.RequireAuth(jwt, redis)` and read the caller with `authsvc.UserID(ctx)`.
+- Other services protect routes with `authsvc.RequireAuth(jwt, redis)` and read the caller with `authsvc.UserID(ctx)`. Admin routes add `authsvc.RequirePermission(users, authsvc.PermAdminRead|PermAdminWrite)` after it; what a role may do lives only in `auth-svc/roles.go`.
 - Every PR adds its lines to `CHANGELOG.md` under `## [Unreleased]` (Keep a Changelog groups, plus `Database` for each new migration file).
 - Tests: Redis-dependent code is tested against miniredis; Postgres code has `*_integration_test.go` files that skip unless `TEST_POSTGRES_DSN` is set.
 

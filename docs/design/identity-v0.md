@@ -55,5 +55,5 @@ The current sign-in, refresh and logout flow stays. The changes are additions:
 | `GET /api/auth/me` answers 503 on a database fault (today 404) | team rule: a fault is 5xx, never 401/404 |
 | Disabled users lose their tokens at once | admin "disable" must have an effect |
 | Setup endpoints and setup token | first admin without a race |
-| `RequireRole(...)` middleware next to `RequireAuth` | admin routes; reads the role from the database |
+| `RequirePermission(users, perm)` middleware next to `RequireAuth`, over one role → permission table in `auth-svc/roles.go` | admin routes; reads the role from the database |
 | Migration `004_auth_roles_teams.sql` | `roles`, `users.role`, `teams`, `team_members` |
