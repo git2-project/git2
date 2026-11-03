@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ApiError, REFRESH_LOCK_NAME, login, me, onSessionEnd } from "./index";
+import { ApiError, REFRESH_LOCK_NAME, login, logout, me, onSessionEnd } from "./index";
 import { loadTokens, saveTokens } from "./tokens";
 
 const user = { id: "u1", email: "a@b.co", username: "ada", created_at: "2026-10-29T00:00:00Z" };
@@ -100,6 +100,16 @@ describe("authenticated requests", () => {
     expect(refreshes).toHaveLength(1);
   });
 
+  it("fails clearly when a refresh succeeds without tokens", async () => {
+    saveTokens({ access: "old", refresh: "r1", accessExpiresAt: 0 });
+    fetchMock
+      .mockResolvedValueOnce(json(401, { error: "token expired" }))
+      .mockResolvedValueOnce(json(200, { message: "token refreshed" }));
+
+    await expect(me()).rejects.toMatchObject({ status: 500, message: "refresh response had no tokens" });
+    expect(loadTokens()).toMatchObject({ access: "old", refresh: "r1" });
+  });
+
   it("reports an unreachable server as status 0", async () => {
     saveTokens({ access: "a1", refresh: "r1", accessExpiresAt: 0 });
     fetchMock.mockRejectedValueOnce(new TypeError("Failed to fetch"));
@@ -155,5 +165,32 @@ describe("refresh across tabs", () => {
 
     await expect(me()).rejects.toMatchObject({ status: 401 });
     expect(fetchMock).toHaveBeenCalledOnce();
+  });
+
+  it("signs out inside the lock and revokes the pair another tab just stored", async () => {
+    const request = stubLocks(() => saveTokens({ access: "a2", refresh: "r2", accessExpiresAt: 0 }));
+    saveTokens({ access: "a1", refresh: "r1", accessExpiresAt: 0 });
+    fetchMock.mockResolvedValueOnce(json(200, { message: "logged out" }));
+
+    await logout();
+
+    expect(request.mock.calls[0][0]).toBe(REFRESH_LOCK_NAME);
+    expect(loadTokens()).toBeNull();
+    const [, init] = fetchMock.mock.calls[0];
+    expect(JSON.parse(init?.body as string)).toEqual({ refresh_token: "r2" });
+  });
+});
+
+describe("stored tokens", () => {
+  it.each([
+    ["not JSON", "{oops"],
+    ["null", "null"],
+    ["missing refresh", JSON.stringify({ access: "a1", accessExpiresAt: 0 })],
+    ["wrong types", JSON.stringify({ access: 1, refresh: "r1", accessExpiresAt: "0" })],
+  ])("drops a broken value (%s)", (_, raw) => {
+    localStorage.setItem("git2.tokens", raw);
+
+    expect(loadTokens()).toBeNull();
+    expect(localStorage.getItem("git2.tokens")).toBeNull();
   });
 });

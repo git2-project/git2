@@ -1,4 +1,4 @@
-import { request } from "./client";
+import { request, withRefreshLock } from "./client";
 import { ApiError } from "./errors";
 import { clearTokens, loadTokens, storeTokensFrom } from "./tokens";
 
@@ -35,10 +35,14 @@ export async function me(): Promise<User> {
 }
 
 // logout revokes the session on the server and always clears it locally, even
-// when the server cannot be reached.
+// when the server cannot be reached. It waits for any refresh in flight (in
+// this tab or another) so it clears and revokes the newest pair.
 export async function logout(): Promise<void> {
-  const tokens = loadTokens();
-  clearTokens();
+  const tokens = await withRefreshLock(async () => {
+    const current = loadTokens();
+    clearTokens();
+    return current;
+  });
   if (!tokens) return;
   try {
     await fetch("/api/auth/logout", {

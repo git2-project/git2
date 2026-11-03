@@ -13,15 +13,38 @@ export interface Tokens {
 let memory: Tokens | null = null;
 
 export function loadTokens(): Tokens | null {
+  let raw: string | null;
   try {
-    const raw = localStorage.getItem(TOKENS_STORAGE_KEY);
-    if (raw !== null) return JSON.parse(raw) as Tokens;
-    // Another tab signed out: storage is the shared truth when it is readable.
-    memory = null;
-    return null;
+    raw = localStorage.getItem(TOKENS_STORAGE_KEY);
   } catch {
     return memory;
   }
+  if (raw === null) {
+    // Another tab signed out: storage is the shared truth when it is readable.
+    memory = null;
+    return null;
+  }
+  const tokens = parseTokens(raw);
+  // A corrupt value can never become a session; drop it so the user lands on
+  // sign-in instead of an endless "unavailable".
+  if (!tokens) clearTokens();
+  return tokens;
+}
+
+function parseTokens(raw: string): Tokens | null {
+  try {
+    const t = JSON.parse(raw) as Partial<Tokens> | null;
+    if (
+      typeof t?.access === "string" && t.access !== "" &&
+      typeof t.refresh === "string" && t.refresh !== "" &&
+      typeof t.accessExpiresAt === "number"
+    ) {
+      return { access: t.access, refresh: t.refresh, accessExpiresAt: t.accessExpiresAt };
+    }
+  } catch {
+    // Not JSON.
+  }
+  return null;
 }
 
 export function saveTokens(tokens: Tokens): void {

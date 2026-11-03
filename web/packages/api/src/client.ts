@@ -43,7 +43,10 @@ export function refreshSession(): Promise<boolean> {
   return refreshing;
 }
 
-function withRefreshLock(fn: () => Promise<boolean>): Promise<boolean> {
+// withRefreshLock runs fn while holding the cross-tab refresh lock. Sign-out
+// takes it too, so a refresh in another tab cannot store a new pair after the
+// tokens were cleared.
+export function withRefreshLock<T>(fn: () => Promise<T>): Promise<T> {
   const locks = typeof navigator === "undefined" ? undefined : navigator.locks;
   // Without Web Locks (old browsers, jsdom) fall back to the in-page guard only.
   return locks ? locks.request(REFRESH_LOCK_NAME, fn) : fn();
@@ -61,7 +64,10 @@ async function doRefresh(seen: string | undefined): Promise<boolean> {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ refresh_token: tokens.refresh }),
   });
-  if (res.ok && storeTokensFrom(res)) return true;
+  if (res.ok) {
+    if (!storeTokensFrom(res)) throw new ApiError(500, "refresh response had no tokens");
+    return true;
+  }
   // Only a 401 means the session is gone. A 5xx is a server fault: keep the
   // tokens so the user is not signed out by an outage.
   if (res.status === 401) {
