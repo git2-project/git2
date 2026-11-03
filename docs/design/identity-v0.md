@@ -56,4 +56,4 @@ The current sign-in, refresh and logout flow stays. The changes are additions:
 | Disabled users lose their tokens at once | admin "disable" must have an effect |
 | Setup endpoints and setup token | first admin without a race |
 | `RequireRole(...)` middleware next to `RequireAuth` | admin routes; reads the role from the database |
-| Migrations `002_auth_roles_teams.sql` | `roles`, `users.role`, `teams`, `team_members` |
+| Migration `004_auth_roles_teams.sql` | `roles`, `users.role`, `teams`, `team_members` |

@@ -20,3 +20,4 @@ Every PR adds its lines under `## [Unreleased]`: one line per change, starting w
 
 ### Database
 - `001_auth_users.sql`: `auth_svc` schema and `auth_svc.users`
+- `004_auth_roles_teams.sql`: `auth_svc.roles` (fixed list: admin, auditor, user, maintainer, member), `users.role` (default `user`), `auth_svc.teams`, `auth_svc.team_members`
