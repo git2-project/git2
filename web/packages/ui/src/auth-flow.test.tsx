@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthProvider } from "./AuthProvider";
+import { RegisterPage } from "./RegisterPage";
 import { RequireAuth } from "./RequireAuth";
 import { SignInPage } from "./SignInPage";
 
@@ -27,12 +28,15 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+const intro = { eyebrow: "e", headline: "h", highlight: "x", text: "t", features: [] };
+
 function renderApp(initialPath: string) {
   return render(
     <MemoryRouter initialEntries={[initialPath]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <AuthProvider>
         <Routes>
-          <Route path="/sign-in" element={<SignInPage plane="Dash" intro={{ eyebrow: "e", headline: "h", highlight: "x", text: "t", features: [] }} otherPlane={{ label: "Admin", href: "/admin/" }} />} />
+          <Route path="/sign-in" element={<SignInPage plane="Dash" intro={intro} otherPlane={{ label: "Admin", href: "/admin/" }} registerPath="/register" />} />
+          <Route path="/register" element={<RegisterPage plane="Dash" intro={intro} />} />
           <Route element={<RequireAuth />}>
             <Route path="/" element={<p>home page</p>} />
             <Route path="/repos" element={<p>repos page</p>} />
@@ -176,5 +180,37 @@ describe("sign-in flow", () => {
     await u.click(screen.getByRole("button", { name: "Switch to light theme" }));
     expect(document.documentElement.dataset.theme).toBe("light");
     expect(localStorage.getItem("git2.theme")).toBe("light");
+  });
+});
+
+describe("registration (development only)", () => {
+  async function fillAndRegister() {
+    const u = userEvent.setup();
+    await u.type(screen.getByLabelText("Email"), "ada@git2.dev");
+    await u.type(screen.getByLabelText("Username"), "ada");
+    await u.type(screen.getByLabelText("Password"), "secret123");
+    await u.click(screen.getByRole("button", { name: "Create account" }));
+  }
+
+  it("sends the user to sign-in when the account was created but sign-in failed", async () => {
+    fetchMock
+      .mockResolvedValueOnce(json(201, user))
+      .mockResolvedValueOnce(json(503, { error: "could not sign in, try again" }));
+    renderApp("/register");
+
+    await fillAndRegister();
+
+    expect(await screen.findByRole("status")).toHaveTextContent("Your account was created. Sign in to continue.");
+    expect(screen.getByLabelText("Email")).toHaveValue("ada@git2.dev");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("says sign-up is turned off on 403", async () => {
+    fetchMock.mockResolvedValueOnce(json(403, { error: "registration is disabled" }));
+    renderApp("/register");
+
+    await fillAndRegister();
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Sign-up is turned off");
   });
 });

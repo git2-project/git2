@@ -4,7 +4,8 @@ import { adminIntro } from "./intro";
 
 const dashPlane = { label: "Dash", href: "/" };
 
-// Accounts are created by administrators (WBS-3.1), not by self-registration.
+// Admin has no self-registration: accounts come from Dash's development-only
+// sign-up for now and from the Admin user management screens later (WBS-3.1).
 export function App() {
   return (
     <Routes>

@@ -1,13 +1,28 @@
-import { AppShell, RequireAuth, SignInPage, useAuth } from "@git2/ui";
+import { AppShell, RegisterPage, RequireAuth, SignInPage, useAuth } from "@git2/ui";
 import { Navigate, Route, Routes } from "react-router-dom";
 import { dashIntro } from "./intro";
 
 const adminPlane = { label: "Admin", href: "/admin/" };
 
+// Self-registration exists only in development; production builds drop the
+// route and the links. Production accounts come from Admin (WBS-3.1).
 export function App() {
   return (
     <Routes>
-      <Route path="/sign-in" element={<SignInPage plane="Dash" intro={dashIntro} otherPlane={adminPlane} />} />
+      <Route
+        path="/sign-in"
+        element={
+          <SignInPage
+            plane="Dash"
+            intro={dashIntro}
+            otherPlane={adminPlane}
+            registerPath={import.meta.env.DEV ? "/register" : undefined}
+          />
+        }
+      />
+      {import.meta.env.DEV && (
+        <Route path="/register" element={<RegisterPage plane="Dash" intro={dashIntro} otherPlane={adminPlane} />} />
+      )}
       <Route element={<RequireAuth />}>
         <Route element={<AppShell plane="Dash" otherPlane={adminPlane} />}>
           <Route index element={<Home />} />

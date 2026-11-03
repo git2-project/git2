@@ -1,25 +1,30 @@
 import { useState, type FormEvent } from "react";
-import { Navigate, useLocation, useNavigate, type Location } from "react-router-dom";
+import { Link, Navigate, useLocation, useNavigate, type Location } from "react-router-dom";
 import { AuthLayout, type AuthIntro, type OtherPlane } from "./AuthLayout";
 import { useAuth } from "./AuthProvider";
 import { Field, PasswordField } from "./Field";
 import { LockIcon, MailIcon } from "./icons";
 import { authErrorMessage } from "./messages";
+import type { RegisteredState } from "./RegisterPage";
 
 interface SignInPageProps {
   // Shown in the heading: "Sign in to git2 Dash".
   plane: string;
   intro: AuthIntro;
   otherPlane?: OtherPlane;
+  // Route of the registration page, if this app has one (development only).
+  registerPath?: string;
 }
 
-export function SignInPage({ plane, intro, otherPlane }: SignInPageProps) {
+export function SignInPage({ plane, intro, otherPlane, registerPath }: SignInPageProps) {
   const { status, sessionExpired, signIn } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const from = (location.state as { from?: Location } | null)?.from?.pathname ?? "/";
+  const state = location.state as ({ from?: Location } & Partial<RegisteredState>) | null;
+  const from = state?.from?.pathname ?? "/";
+  const registeredEmail = state?.registeredEmail;
 
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(registeredEmail ?? "");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -46,11 +51,24 @@ export function SignInPage({ plane, intro, otherPlane }: SignInPageProps) {
       plane={plane}
       otherPlane={otherPlane}
       intro={intro}
+      tabs={registerPath ? { signInPath: location.pathname, registerPath } : undefined}
       title={`Sign in to git2 ${plane}`}
       subtitle="Sign in with the account your administrator gave you."
+      footer={
+        registerPath && (
+          <>
+            No account yet? <Link to={registerPath}>Create one</Link>
+          </>
+        )
+      }
     >
       <form className="g2-form" onSubmit={onSubmit} noValidate>
-        {sessionExpired && !error && (
+        {registeredEmail && !error && (
+          <p className="g2-notice" role="status">
+            Your account was created. Sign in to continue.
+          </p>
+        )}
+        {sessionExpired && !registeredEmail && !error && (
           <p className="g2-notice" role="status">
             Your session has expired. Sign in again to continue.
           </p>
@@ -65,7 +83,7 @@ export function SignInPage({ plane, intro, otherPlane }: SignInPageProps) {
           icon={<MailIcon />}
           type="email"
           autoComplete="username"
-          placeholder="ornek@eposta.com"
+          placeholder="you@example.com"
           required
           value={email}
           onChange={(e) => setEmail(e.target.value)}

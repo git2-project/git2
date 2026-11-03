@@ -34,9 +34,4 @@ Always open both apps through **port 5173**. The Dash dev server proxies `/api/`
 - When the server ends the session, the sign-in page says it expired; signing out in another tab does not.
 - Only a 401 signs the user out. A 5xx or network error keeps the tokens and shows *Try again*.
 - Sign-in and sign-out in one tab or plane reach the others through the `storage` event.
-- There is no sign-up page: public sign-up is out of scope, and accounts will come from Admin user management (WBS-3.1) or SSO. Until then, create a development account against auth-svc directly:
-
-  ```bash
-  curl -X POST http://localhost:8080/api/auth/register -H 'Content-Type: application/json' \
-    -d '{"email":"dev@example.com","username":"dev","password":"change-me-123"}'
-  ```
+- Dash has a `/register` page in development only (`pnpm dev`); production builds drop the route and its links. Production accounts will come from Admin user management (WBS-3.1). If registration works but the automatic sign-in fails, the page sends the user to sign-in instead of letting them retry into a 409.
