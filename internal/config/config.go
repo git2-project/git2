@@ -28,6 +28,11 @@ type Config struct {
 	JWTSecret          string
 	AccessTokenExpiry  time.Duration
 	RefreshTokenExpiry time.Duration
+
+	// SetupToken (GIT2_SETUP_TOKEN) fixes the one-time first-admin setup
+	// token for scripted installs. Empty: auth-svc generates one and logs it.
+	// Its length is checked by authsvc.PrepareSetup.
+	SetupToken string
 }
 
 func Load() (*Config, error) {
@@ -40,6 +45,7 @@ func Load() (*Config, error) {
 		RedisAddr:     getenv("REDIS_ADDR", "localhost:6379"),
 		RedisPassword: os.Getenv("REDIS_PASSWORD"),
 		JWTSecret:     os.Getenv("JWT_SECRET"),
+		SetupToken:    os.Getenv("GIT2_SETUP_TOKEN"),
 	}
 
 	maxConns, err := strconv.Atoi(getenv("POSTGRES_MAX_CONNS", "10"))

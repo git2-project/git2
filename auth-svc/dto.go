@@ -53,11 +53,12 @@ type UserResponse struct {
 	ID        uuid.UUID `json:"id"`
 	Email     string    `json:"email"`
 	Username  string    `json:"username"`
+	Role      Role      `json:"role"`
 	CreatedAt time.Time `json:"created_at"`
 }
 
 func toUserResponse(u User) UserResponse {
-	return UserResponse{ID: u.ID, Email: u.Email, Username: u.Username, CreatedAt: u.CreatedAt}
+	return UserResponse{ID: u.ID, Email: u.Email, Username: u.Username, Role: u.Role, CreatedAt: u.CreatedAt}
 }
 
 type messageResponse struct {

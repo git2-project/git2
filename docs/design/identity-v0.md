@@ -25,10 +25,17 @@ Every user has exactly one instance role (`auth_svc.users.role`). Team roles liv
 
 Disabling is how accounts are removed: repositories, merge requests and audit entries keep pointing at the user. A disabled user's tokens must stop working **at once**:
 
-- all their refresh sessions are deleted (auth-svc keeps a per-user set of session ids for this);
-- `RequireAuth` rejects their access tokens through a short-lived Redis marker that lasts as long as an access token can live.
+- the moment of disabling is stored in `auth_svc.users.tokens_valid_after` (database clock). Refresh refuses every session that began before it, using the `sat` (session start) claim refresh tokens carry across rotation. This also ends sessions Redis does not list, and keeps old sessions dead after the user is enabled again;
+- all their listed refresh sessions are deleted (auth-svc keeps a per-user set of session ids for this);
+- `RequireAuth` rejects their access tokens through a short-lived Redis marker that holds the same moment and lasts as long as an access token can live.
 
-**A Redis fault in that check fails open**, the same way the revoked-token check (`isRevoked`) already does. Failing closed would turn a short Redis outage into 503s on every authenticated route of every service that mounts `RequireAuth`. The trade-off is small:
+Both checks treat anything issued up to `DisableGrace` (10 s) after the moment as "before". That covers a sign-in that read the account as active just before the disable and issued its tokens just after, and clock differences between git2 processes. The cost: an account enabled again within those 10 seconds signs in once more after them.
+
+The last active admin cannot be disabled (`ErrLastAdmin`, 409 in admin-api): the active admin rows are locked while checking, so two concurrent disables cannot both pass.
+
+In code: `authsvc.DisableUser` / `authsvc.EnableUser`, called by admin-api.
+
+**A Redis fault in that check fails open**, the same way the revoked-token check already did. Failing closed would turn a short Redis outage into 503s on every authenticated route of every service that mounts `RequireAuth`. The trade-off is small:
 
 - admin routes do not rely on the marker: their middleware reads the role and `is_active` from the database on every request, so a disabled user is locked out of the admin plane even while Redis is down;
 - refresh also reads `is_active` from the database, so no new access token is issued;
@@ -46,9 +53,9 @@ Organizations (T-03) come in WBS-3.1 but are not in the contract yet. They decid
 
 A fresh install has no admin, and "the first account to register becomes admin" lets whoever reaches the server first take it over. git2 uses a **one-time setup token** instead:
 
-1. On startup, if no `admin` exists, auth-svc creates a random setup token, stores only its hash, and prints the token once in the log. `git2ctl install` can pass its own token through `GIT2_SETUP_TOKEN`, which is how scripted installs work.
+1. On startup, if no active `admin` exists, auth-svc creates a random setup token, stores only its SHA-256 in `auth_svc.setup_token` (one row at most), and prints the token once in the log. The token works for one hour; until then a restart or a second git2 process keeps it instead of replacing it, so the printed token stays valid. After the hour, the next start prints a new one: that is the way back for an operator who lost the log. `git2ctl install` can pass its own token (at least 32 characters) through `GIT2_SETUP_TOKEN`, which is how scripted installs work.
 2. `GET /api/setup/status` tells the console whether setup is still needed.
-3. `POST /api/setup/admin` with the token creates the first `admin` and burns the token. The W6 setup wizard (WBS-11.1) is a UI over these two endpoints.
+3. `POST /api/setup/admin` with the token creates the first `admin` and burns the token, in one transaction that locks the token row, so two requests with the right token cannot both win. A wrong token answers 403, not 401. The W6 setup wizard (WBS-11.1) is a UI over these two endpoints.
 
 Self-registration (`POST /api/auth/register`) is **off by default** after setup. An admin creates accounts, or turns sign-up on in the instance settings (WBS-11.1). Until those settings exist, sign-up stays open in dev.
 
@@ -62,5 +69,5 @@ The current sign-in, refresh and logout flow stays. The changes are additions:
 | `GET /api/auth/me` answers 503 on a database fault (today 404) | team rule: a fault is 5xx, never 401/404 |
 | Disabled users lose their tokens at once | admin "disable" must have an effect |
 | Setup endpoints and setup token | first admin without a race |
-| `RequireRole(...)` middleware next to `RequireAuth` | admin routes; reads the role from the database |
-| Migrations `002_auth_roles_teams.sql` | `roles`, `users.role`, `teams`, `team_members` |
+| `RequirePermission(users, perm)` middleware next to `RequireAuth`, over one role → permission table in `auth-svc/roles.go` | admin routes; reads the role from the database |
+| Migration `004_auth_roles_teams.sql` | `roles`, `users.role`, `teams`, `team_members` |
