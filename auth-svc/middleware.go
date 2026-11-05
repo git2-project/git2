@@ -18,7 +18,8 @@ type ctxKey struct{ name string }
 var claimsKey = &ctxKey{"claims"}
 
 // RequireAuth demands a valid, unrevoked access token in the Authorization
-// header and stores its claims in the request context. Other services mount
+// header, issued before its user was disabled (if they were), and stores its
+// claims in the request context. Other services mount
 // it in front of their own authenticated routes.
 func RequireAuth(jwtMgr *authjwt.Manager, rdb *redis.Client) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
@@ -33,8 +34,12 @@ func RequireAuth(jwtMgr *authjwt.Manager, rdb *redis.Client) func(http.Handler) 
 				httpx.Error(w, http.StatusUnauthorized, "invalid or expired access token")
 				return
 			}
-			if isRevoked(r.Context(), rdb, claims.ID) {
+			switch checkAccess(r.Context(), rdb, claims) {
+			case tokenRevoked:
 				httpx.Error(w, http.StatusUnauthorized, "token has been revoked")
+				return
+			case userDisabled:
+				httpx.Error(w, http.StatusUnauthorized, "account is not available")
 				return
 			}
 			next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), claimsKey, claims)))

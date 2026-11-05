@@ -12,6 +12,13 @@ import (
 	"github.com/google/uuid"
 )
 
+// Token times carry milliseconds instead of whole seconds. auth-svc rejects
+// access tokens issued before a user was disabled by comparing iat with the
+// moment of disabling; with whole seconds, a token issued in that same second
+// could be neither safely kept nor safely rejected. Fractional NumericDates
+// are valid JWT (RFC 7519, section 2), and golang-jwt parses them either way.
+func init() { jwt.TimePrecision = time.Millisecond }
+
 type TokenPurpose string
 
 const (

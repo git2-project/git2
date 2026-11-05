@@ -72,6 +72,18 @@ func (s *PostgresStore) FindByID(ctx context.Context, id uuid.UUID) (User, error
 	return s.findOne(ctx, `SELECT `+userColumns+` FROM auth_svc.users WHERE id = $1`, id)
 }
 
+// SetActive enables or disables an account. ErrNotFound for an unknown id.
+func (s *PostgresStore) SetActive(ctx context.Context, id uuid.UUID, active bool) error {
+	tag, err := s.db.Exec(ctx, `UPDATE auth_svc.users SET is_active = $2, updated_at = now() WHERE id = $1`, id, active)
+	if err != nil {
+		return fmt.Errorf("set user active: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 func (s *PostgresStore) findOne(ctx context.Context, q string, arg any) (User, error) {
 	u, err := scanUser(s.db.QueryRow(ctx, q, arg))
 	if errors.Is(err, pgx.ErrNoRows) {

@@ -175,7 +175,7 @@ func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
 	// The new JTI becomes the only valid one before the token is handed out,
 	// so a Redis failure can't leave the client holding a token the session
 	// won't recognise.
-	result, err := rotateSession(r.Context(), h.deps.Redis, sid, claims.ID, jti, h.deps.JWT.RefreshExpiry())
+	result, err := rotateSession(r.Context(), h.deps.Redis, u.ID, sid, claims.ID, jti, h.deps.JWT.RefreshExpiry())
 	if err != nil {
 		// Fail closed but retryable: the access token stays valid for its TTL,
 		// so a blip only delays rotation instead of signing the user out.
@@ -213,7 +213,7 @@ func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.RefreshToken != "" {
 		if claims, err := h.deps.JWT.Parse(req.RefreshToken, authjwt.PurposeRefresh); err == nil && claims.SessionID != "" {
-			if err := deleteSession(r.Context(), h.deps.Redis, claims.SessionID); err != nil {
+			if err := deleteSession(r.Context(), h.deps.Redis, claims.UserID, claims.SessionID); err != nil {
 				slog.Warn("logout: delete session", "err", err)
 			}
 		}
@@ -245,7 +245,7 @@ func (h *Handler) startSession(ctx context.Context, userID uuid.UUID) (string, e
 	if err != nil {
 		return "", err
 	}
-	if err := storeSession(ctx, h.deps.Redis, sid, jti, h.deps.JWT.RefreshExpiry()); err != nil {
+	if err := storeSession(ctx, h.deps.Redis, userID, sid, jti, h.deps.JWT.RefreshExpiry()); err != nil {
 		return "", err
 	}
 	return refresh, nil

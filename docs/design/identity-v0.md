@@ -26,9 +26,11 @@ Every user has exactly one instance role (`auth_svc.users.role`). Team roles liv
 Disabling is how accounts are removed: repositories, merge requests and audit entries keep pointing at the user. A disabled user's tokens must stop working **at once**:
 
 - all their refresh sessions are deleted (auth-svc keeps a per-user set of session ids for this);
-- `RequireAuth` rejects their access tokens through a short-lived Redis marker that lasts as long as an access token can live.
+- `RequireAuth` rejects their access tokens through a short-lived Redis marker that lasts as long as an access token can live. The marker holds the moment of disabling, and only tokens issued at or before it are rejected, so re-enabling needs no cleanup: the user signs in again and the new tokens work, while the old ones stay dead. Token times carry milliseconds so a token from the same second is told apart.
 
-**A Redis fault in that check fails open**, the same way the revoked-token check (`isRevoked`) already does. Failing closed would turn a short Redis outage into 503s on every authenticated route of every service that mounts `RequireAuth`. The trade-off is small:
+In code: `authsvc.DisableUser` / `authsvc.EnableUser`, called by admin-api.
+
+**A Redis fault in that check fails open**, the same way the revoked-token check already did. Failing closed would turn a short Redis outage into 503s on every authenticated route of every service that mounts `RequireAuth`. The trade-off is small:
 
 - admin routes do not rely on the marker: their middleware reads the role and `is_active` from the database on every request, so a disabled user is locked out of the admin plane even while Redis is down;
 - refresh also reads `is_active` from the database, so no new access token is issued;

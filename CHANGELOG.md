@@ -11,6 +11,11 @@ Every PR adds its lines under `## [Unreleased]`: one line per change, starting w
 - auth-svc: `RequireAuth` middleware and `UserID(ctx)` for other services
 - auth-svc: instance role on every user (`admin`, `auditor`, `user`; new accounts get `user`), returned as `role` by register, login and `/me`
 - auth-svc: role → permission table (`roles.go`) and `RequirePermission` middleware for admin routes; the role is read from the database on every request
+- auth-svc: `DisableUser` / `EnableUser` for admin-api: disabling ends every refresh session of the user and makes `RequireAuth` reject their access tokens at once (per-user session set and a `disabled:<uid>` marker in Redis)
+
+### Changed
+- auth-svc: `RequireAuth` checks revocation and the disabled marker in one Redis round trip; it still fails open on a Redis fault
+- internal/jwt: token times (`iat`, `exp`, `nbf`) carry milliseconds, so a token issued in the same second as a disable is told apart
 - internal: shared config, Postgres pool, Redis client, JWT (HS256), bcrypt, HTTP helpers and rate limiting
 - dev: devcontainer, `make run` / `tests` / `deps` / `build`, migration runner
 - contracts: OpenAPI v0 for auth-svc (`contracts/auth-svc/`) and admin-api users, roles and teams (`contracts/admin-api/`)

@@ -97,6 +97,21 @@ func (s *memStore) setRole(email string, role Role) {
 	}
 }
 
+func (s *memStore) SetActive(_ context.Context, id uuid.UUID, active bool) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.fail != nil {
+		return s.fail
+	}
+	u, ok := s.users[id]
+	if !ok {
+		return ErrNotFound
+	}
+	u.IsActive = active
+	s.users[id] = u
+	return nil
+}
+
 func (s *memStore) setActive(email string, active bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -114,6 +129,7 @@ type harness struct {
 	store  *memStore
 	jwt    *authjwt.Manager
 	redis  *redis.Client
+	mr     *miniredis.Miniredis
 }
 
 func newHarness(t *testing.T) *harness {
@@ -134,7 +150,7 @@ func newHarness(t *testing.T) *harness {
 	}
 	r := chi.NewRouter()
 	r.Route("/api", h.Mount)
-	return &harness{t: t, router: r, store: store, jwt: jwtMgr, redis: rdb}
+	return &harness{t: t, router: r, store: store, jwt: jwtMgr, redis: rdb, mr: mr}
 }
 
 func (h *harness) do(method, path, bearer string, body any) *httptest.ResponseRecorder {

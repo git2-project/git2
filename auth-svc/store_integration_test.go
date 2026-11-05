@@ -60,6 +60,19 @@ func TestPostgresStore(t *testing.T) {
 	if _, err := store.FindByID(ctx, uuid.New()); !errors.Is(err, ErrNotFound) {
 		t.Errorf("FindByID(missing) err = %v, want ErrNotFound", err)
 	}
+
+	if err := store.SetActive(ctx, created.ID, false); err != nil {
+		t.Fatalf("SetActive(false): %v", err)
+	}
+	if got, err := store.FindByID(ctx, created.ID); err != nil || got.IsActive || !got.UpdatedAt.After(created.UpdatedAt) {
+		t.Errorf("after SetActive(false): active=%v updated_at=%v (was %v), err=%v", got.IsActive, got.UpdatedAt, created.UpdatedAt, err)
+	}
+	if err := store.SetActive(ctx, created.ID, true); err != nil {
+		t.Fatalf("SetActive(true): %v", err)
+	}
+	if err := store.SetActive(ctx, uuid.New(), false); !errors.Is(err, ErrNotFound) {
+		t.Errorf("SetActive(missing) err = %v, want ErrNotFound", err)
+	}
 }
 
 // TestRolesSeedMatchesCode keeps the role constants in roles.go and the seed
