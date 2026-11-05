@@ -122,7 +122,7 @@ paths:
       tags: [users]
       operationId: updateUser
       x-status: draft
-      summary: Change role, enable or disable, or rename
+      summary: Change role or email, enable or disable
       description: |
         Setting `is_active` to false ends every session of the user and
         rejects their access tokens at once. There is no delete: disabled
@@ -130,6 +130,9 @@ paths:
 
         An admin cannot demote or disable themselves, and the last active
         admin cannot be demoted or disabled (409).
+
+        Usernames cannot be changed in v0: they are part of repository URLs
+        (`/<owner>/<repo>`), so a rename needs redirects that do not exist yet.
       requestBody:
         required: true
         content:
@@ -452,8 +455,13 @@ components:
       additionalProperties: false
       required: [email, username, password]
       properties:
-        email: { type: string, format: email, maxLength: 254 }
-        username: { $ref: '#/components/schemas/Slug' }
+        email:
+          type: string
+          maxLength: 254
+          description: Trimmed and lowercased, then validated as an email address.
+        username:
+          type: string
+          description: Trimmed and lowercased, then validated as a `Slug`.
         password:
           type: string
           minLength: 8
@@ -468,8 +476,10 @@ components:
       additionalProperties: false
       minProperties: 1
       properties:
-        email: { type: string, format: email, maxLength: 254 }
-        username: { $ref: '#/components/schemas/Slug' }
+        email:
+          type: string
+          maxLength: 254
+          description: Trimmed and lowercased, then validated as an email address.
         role: { $ref: '#/components/schemas/InstanceRole' }
         is_active: { type: boolean }
 
