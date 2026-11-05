@@ -22,7 +22,7 @@ Draft operations fix the shape only; they still lack error responses (the 21 `op
 ## What it depends on
 
 - **auth-svc** issues the bearer token and owns users; organizations come with WBS-3.1.
-- **git-svc** (`git.v1`, [git2-codeplane](https://github.com/git2-project/git2-codeplane)): today it has repository CRUD only. Code browsing needs RPCs for refs, trees, blobs, commits and diffs; merge requests need merge.
+- **git-svc** (`git.v1`, [git2-codeplane](https://github.com/git2-project/git2-codeplane)): see [`contracts/git/README.md`](../git/README.md) for the RPCs and the pinned version. Code browsing uses the read RPCs for refs, trees, blobs, commits and diffs (git2-project/git2-codeplane#8); merge requests need merge.
 - **ci-svc** (`ci.v1`, [git2-runner](https://github.com/git2-project/git2-runner)): `ListPipelines`, `GetPipeline`, `StreamJobLog`, `ListArtifacts`.
 - git-svc and ci-svc trust their callers, so **dash-api checks repository access on every call** (a repository the caller cannot read is a `404`).
 
@@ -52,8 +52,9 @@ The Dash dev server then sends `/api/auth/*` to the Go server and every other `/
 1. **URL prefix and versioning**: `/api/repos` (like `/api/auth`) or `/api/v1/repos`?
 2. **Owners**: users and organizations share one namespace (`/repos/{owner}/{repo}`); organizations depend on WBS-3.1.
 3. **Repository permissions**: which service stores repository roles (read, write, admin) and team access: dash-api or admin-api?
-4. **Visibility**: `git.v1` has no private/internal/public field; decide whether dash-api adds one.
+4. **Visibility**: `git.v1` has no private/internal/public field. Git core's view: it should not go into `git.v1`, because git-svc does no authorization. Decide it together with question 3; the gateway needs it too for clone and fetch.
 5. **Pipeline statuses**: take the final list from `ci.v1`.
+6. **Downloads**: `/raw` needs the bearer header, which a plain `<a>` or `<img>` cannot send. For now Dash fetches the bytes and opens them as a Blob URL; settle with Platform (Ceyda) whether downloads get another way to authorize (for example a short-lived signed URL).
 
 ## Changing it
 

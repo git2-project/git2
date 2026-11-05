@@ -24,9 +24,13 @@ info:
     `page_token`; a response with more items carries `next_page_token`.
 
     **Refs and paths** travel as query parameters, because branch names and file paths
-    contain `/`. `ref` accepts a branch, a tag or a commit SHA (full, or an unambiguous
-    prefix of at least 7 characters); when it is omitted the repository's default branch
-    is used.
+    contain `/`. `ref` accepts a branch, a tag or a full 40-character commit SHA; when it
+    is omitted the repository's default branch is used. A SHA prefix is accepted only by
+    `GET /repos/{owner}/{repo}/commits/{sha}`.
+
+    **File contents.** git-svc returns bytes, which are not always valid UTF-8 (a Latin-1
+    file is not binary, and the 1 MiB cut can fall inside a character). dash-api converts
+    them to JSON strings, so every invalid byte sequence comes back as U+FFFD.
 servers:
   - url: /api
     description: Same origin as the web apps, behind the gateway
@@ -52,17 +56,21 @@ paths:
     get:
       tags: [Repositories]
       operationId: listRepositories
-      summary: List repositories the caller can read
+      summary: List the repositories of one owner
+      description: |
+        Repositories of one user or organization that the caller can read, sorted by name
+        (case-insensitive). Page tokens follow that order. A list across owners and a
+        "newest first" order wait for open question 3 (repository permissions).
       parameters:
         - name: owner
           in: query
-          description: Only repositories of this user or organization.
+          description: User or organization whose repositories to list. Defaults to the caller.
           schema: { $ref: "#/components/schemas/OwnerName" }
         - $ref: "#/components/parameters/PageSize"
         - $ref: "#/components/parameters/PageToken"
       responses:
         "200":
-          description: One page of repositories, newest first.
+          description: One page of repositories, sorted by name (case-insensitive).
           content:
             application/json:
               schema:
@@ -197,8 +205,15 @@ paths:
       summary: List one directory
       description: |
         Entries of a single directory (not recursive), directories first, then by name.
+        A directory with more than 10 000 entries is cut there and answers `truncated: true`.
+
         An empty repository answers `200` with `empty: true` and no entries, so Dash can
         show the "push your first commit" page.
+
+        A repository can have commits while its default branch has none, for example after
+        `git push origin master` to a repository whose default is `main`. Then `/tree`
+        without `ref` answers `404`, not `empty: true`; Dash offers the branches from
+        `/branches` instead.
       parameters:
         - $ref: "#/components/parameters/Ref"
         - $ref: "#/components/parameters/DirPath"
@@ -209,7 +224,12 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Tree" }
         "400":
-          description: "`path` is a file, not a directory."
+          description: |
+            One of:
+            - `path` is a file, not a directory;
+            - `path` is a submodule;
+            - `path` is malformed (a trailing `/`, or a `..` or `.` segment);
+            - `ref` is malformed (for example `main~1` or `HEAD^`).
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
@@ -225,9 +245,10 @@ paths:
       operationId: getBlob
       summary: Get one file for display
       description: |
-        Text files up to 1 MiB come back whole as UTF-8. Larger text files are cut at
-        1 MiB with `truncated: true`. Binary files come back without content; Dash links
-        to `/raw` instead. Git LFS pointers come back with `lfs: true`.
+        Text files up to 1 MiB come back whole. Larger text files are cut at 1 MiB with
+        `truncated: true`. Invalid UTF-8 comes back as U+FFFD (see "File contents" above).
+        Binary files come back without content; Dash offers a download through `/raw`
+        instead. Git LFS pointers come back with `lfs: true`.
       parameters:
         - $ref: "#/components/parameters/Ref"
         - $ref: "#/components/parameters/FilePath"
@@ -238,7 +259,12 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Blob" }
         "400":
-          description: "`path` is a directory, not a file."
+          description: |
+            One of:
+            - `path` is a directory, not a file;
+            - `path` is a submodule;
+            - `path` is malformed (a trailing `/`, or a `..` or `.` segment);
+            - `ref` is malformed (for example `main~1` or `HEAD^`).
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
@@ -253,6 +279,10 @@ paths:
       tags: [Code browsing]
       operationId: getRaw
       summary: Download one file as bytes
+      description: |
+        Needs the bearer header like every other operation, so a plain `<a href>` or
+        `<img src>` cannot use it: Dash fetches the bytes and hands them to the browser as
+        a Blob URL. Another way to authorize downloads is open question 6.
       parameters:
         - $ref: "#/components/parameters/Ref"
         - $ref: "#/components/parameters/FilePath"
@@ -263,7 +293,12 @@ paths:
             application/octet-stream:
               schema: { type: string, contentMediaType: application/octet-stream }
         "400":
-          description: "`path` is a directory, not a file."
+          description: |
+            One of:
+            - `path` is a directory, not a file;
+            - `path` is a submodule;
+            - `path` is malformed (a trailing `/`, or a `..` or `.` segment);
+            - `ref` is malformed (for example `main~1` or `HEAD^`).
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
@@ -322,6 +357,11 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/CommitDetail" }
+        "400":
+          description: The prefix matches more than one object; send a longer one.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
 
@@ -832,8 +872,9 @@ components:
       name: ref
       in: query
       description: |
-        Branch, tag or commit SHA (full, or an unambiguous prefix of at least 7 characters).
-        Defaults to the repository's default branch.
+        Branch, tag or full 40-character commit SHA; a prefix is not accepted. Defaults to
+        the repository's default branch. Dash builds stable links from the full `commit_sha`
+        of each answer.
       schema: { type: string, maxLength: 255 }
     DirPath:
       name: path
@@ -924,7 +965,7 @@ components:
 
     Repository:
       type: object
-      required: [id, owner, name, full_name, default_branch, description, empty, clone_url, created_at, updated_at]
+      required: [id, owner, name, full_name, default_branch, description, clone_url, created_at, updated_at]
       properties:
         id: { type: string, description: git-svc repository ID. }
         owner: { $ref: "#/components/schemas/Owner" }
@@ -932,7 +973,6 @@ components:
         full_name: { type: string, example: ada/billing-service }
         description: { type: string, maxLength: 2000 }
         default_branch: { type: string, example: main }
-        empty: { type: boolean, description: True until the first push. }
         clone_url: { type: string, format: uri, example: "https://git2.example.com/ada/billing-service.git" }
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time, description: Metadata changes only; pushes do not change it. }
@@ -963,7 +1003,9 @@ components:
       required: [name, commit]
       properties:
         name: { type: string, example: v1.0.0 }
-        commit: { $ref: "#/components/schemas/CommitRef" }
+        commit:
+          oneOf: [{ $ref: "#/components/schemas/CommitRef" }, { type: "null" }]
+          description: Commit the tag leads to; null for a tag that leads to a tree or a file.
         message: { type: [string, "null"], description: "Message of an annotated tag, null for a lightweight one." }
 
     CommitRef:
@@ -1018,13 +1060,14 @@ components:
 
     Tree:
       type: object
-      required: [ref, commit_sha, path, empty, entries]
+      required: [ref, commit_sha, path, empty, entries, truncated]
       properties:
         ref: { type: string, description: "The ref that was resolved, for example main." }
         commit_sha: { type: string, description: Commit the listing was read from; links stay stable when the branch moves. }
         path: { type: string }
         empty: { type: boolean, description: The repository has no commits yet. }
         entries: { type: array, items: { $ref: "#/components/schemas/TreeEntry" } }
+        truncated: { type: boolean, description: The directory has more than 10 000 entries; only the first 10 000 are listed. }
         last_commit:
           oneOf: [{ $ref: "#/components/schemas/CommitRef" }, { type: "null" }]
           description: Last commit that touched this directory, for the header row.
@@ -1041,7 +1084,7 @@ components:
         binary: { type: boolean }
         lfs: { type: boolean, description: The file is a Git LFS pointer. }
         truncated: { type: boolean }
-        content: { type: [string, "null"], description: UTF-8 text; null for binary files. }
+        content: { type: [string, "null"], description: "File text; invalid UTF-8 bytes come back as U+FFFD. Null for binary files." }
         language: { type: [string, "null"], description: "Shiki language ID guessed from the file name, for highlighting.", example: go }
 
     DiffStats:
@@ -1063,7 +1106,13 @@ components:
         deletions: { type: integer }
         binary: { type: boolean }
         truncated: { type: boolean, description: The patch is too large to show. }
-        patch: { type: [string, "null"], description: "Unified diff of this file, without the `diff --git` header." }
+        patch:
+          type: [string, "null"]
+          description: |
+            The hunks of this file's unified diff, starting at the first `@@` line. The
+            `diff --git`, `index`, `---` and `+++` lines are not included; rebuild them from
+            `old_path` and `new_path` if needed. Invalid UTF-8 bytes come back as U+FFFD.
+            Null for binary files and when `truncated` is true.
 
     Diff:
       type: object
