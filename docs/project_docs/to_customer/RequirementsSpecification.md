@@ -30,7 +30,7 @@ The Requirement Analysis Report (23.11.2026) will refine these requirements. The
 
 **Structure of this document:**
 
-- **Section 2.1** lists functional requirements FR-01–FR-96, grouped by Project Plan task T-01–T-17, each with a priority and an acceptance condition.
+- **Section 2.1** lists functional requirements FR-01–FR-98, grouped by Project Plan task T-01–T-17, each with a priority and an acceptance condition.
 - **Section 2.2** lists non-functional requirements NFR-01–NFR-34: security, performance, usability, reliability, portability, maintainability and design constraints.
 - **Section 3.1** describes the nine user types and external actors (UT-01–UT-09) and how their permissions differ.
 - **Section 3.2** presents five personas (P-01–P-05), thirteen user scenarios (SC-01–SC-13), and a user story for every WBS activity of the Project Plan (US-01–US-42).
@@ -88,7 +88,7 @@ The requirements are grouped by Project Plan task. Each one is linked to the tas
 | FR-13 | T-02 | D-01 | When a sign-in fails, the system shall return the same "invalid credentials" error for an unknown email address and for a wrong password. It shall refuse a disabled account with a distinct "account is disabled" error and limit sign-in attempts per client IP address. | Must | API tests cover an unknown email, a wrong password and a disabled account. Repeated attempts from one IP get 429. |
 | FR-14 | T-03 | D-01, D-03 | The system shall let an instance administrator create, edit, disable and re-enable user accounts. A disabled user cannot sign in or refresh a session, and the user's PATs stop working. | Must | Admin E2E flow. API tests for a disabled user: sign-in returns 403, refresh returns 401 and the PAT returns 401 (WBS-3.1). |
 | FR-15 | T-03 | D-01, D-03 | The system shall let an instance administrator create organizations and teams, add and remove team members, and give a user or a team a role (Read, Write or Maintain) on an organization or a repository. | Must | The admin E2E flow creates an organization, a team and a role assignment, and API tests read them back (WBS-3.1). |
-| FR-16 | T-03 | D-01 | The system shall check the caller's permission on the server for every API call and Git operation. It shall refuse an action that the caller's role does not allow with HTTP 403 or a Git error, whatever the web UI shows. | Must | Authorization test matrix: every endpoint is called with an allowed role and a denied role (Project Plan §1.4). |
+| FR-16 | T-03 | D-01 | The system shall check the caller's permission on the server for every API call and Git operation. It shall refuse an action that the caller's role does not allow with HTTP 403 or a Git error, whatever the web UI shows. A repository the caller cannot read answers "not found" (404) instead, so that its existence is not revealed (FR-97). | Must | Authorization test matrix: every endpoint is called with an allowed role and a denied role (Project Plan §1.4). |
 | FR-17 | T-03 | D-01, D-03 | The system shall let a user create a PAT with a name and one or more scopes, at least a read-only scope and a read-write scope. The token value is shown once, when it is created, and stored only as a hash. | Must | An API test creates a token of each scope. Database inspection shows only hashes. A read-only token cannot perform a write (WBS-3.2). |
 | FR-18 | T-03 | D-01, D-03 | The system shall let a user list and revoke their PATs. A revoked token is refused on the next request. | Must | Revoke a token and reuse it at once for an API call and a `git fetch`. Both are refused (WBS-3.2). |
 | FR-19 | T-03 | D-01, D-03 | The system shall let a user add, list and remove SSH public keys on their account and show each key's fingerprint. | Must | API and UI tests add a valid key, reject a malformed or duplicate key, and remove a key (WBS-3.2). |
@@ -102,24 +102,26 @@ The requirements are grouped by Project Plan task. Each one is linked to the tas
 | FR-27 | T-05, T-03 | D-01 | The system shall let a standard `git` client clone, fetch and push a repository over HTTPS (the Git Smart HTTP protocol). The client authenticates with the username and a PAT. | Must | Integration tests run the real `git` CLI for clone, fetch, and push of new commits, branches and tags (WBS-5.2, M1 demo). |
 | FR-28 | T-05 | D-01 | The system shall allow clone and fetch only to users with at least the Read role on the repository, and push only to users with at least the Write role. A refusal is shown in the `git` client's error output. | Must | Integration tests with users of each role. The FR-16 matrix includes Git operations. |
 | FR-29 | T-05 | D-01 | The system shall let a standard `git` client clone, fetch and push over SSH with a key registered on the user's account (FR-19). The permission checks are the same as for HTTPS. | Could (optional, WBS-5.3) | `git clone ssh://…` and push succeed with a registered key and fail with an unknown key (WBS-5.3). |
-| FR-30 | T-06 | D-02 | The system shall show the file tree of any branch or tag of a repository, and the content of a selected text file with syntax highlighting. | Must | An E2E test opens files in several languages on two branches (WBS-6.1). |
-| FR-31 | T-06 | D-02 | The system shall show the commit history of a selected branch. For a selected commit, it shows the message, author and date, and the diff of each changed file. | Must | An E2E test compares the commit list and one commit's diff with the `git log` and `git show` output of the same repository (WBS-6.1). |
+| FR-30 | T-06 | D-02 | The system shall show the file tree of any branch or tag of a repository, directories first, with a breadcrumb back to the root. It shows the content of a selected text file with syntax highlighting and line numbers. Selecting a line number gives a URL that links to that line. A binary file, a file over 1 MiB or a Git LFS file is shown with its size and a download link instead of its content. | Must | An E2E test opens files in several languages on two branches, follows a line link, and opens a binary, a 2 MiB and an LFS file (WBS-6.1). |
+| FR-97 | T-06 | D-02 | The system shall show a signed-in user the list of repositories they can read, newest first, with name, owner and description, loading the next page of 50 when the user scrolls to the end. A repository the user cannot read is not listed, and its URL shows "not found". | Must | UI and API test with a user who can read 60 repositories and not a 61st: two pages are loaded and the 61st answers 404 (WBS-6.1). |
+| FR-98 | T-06 | D-02 | When a repository has no commits yet, the system shall show its HTTPS clone URL with a copy button and the commands for a first push, instead of a file tree. | Should | UI test with a new, empty repository. After the shown commands are run, the page shows the file tree (WBS-6.1). |
+| FR-31 | T-06 | D-02 | The system shall show the commit history of a selected branch, directory or file, newest first, with each commit's title, author, date and short SHA. The history of a directory or file contains only the commits that changed it. For a selected commit, it shows the full message, author, date and parent commits, and the diff of each changed file with added and removed lines. When a commit changes more than 300 files, the page says that the list is truncated. | Must | An E2E test compares the commit list and one commit's diff with the `git log` and `git show` output of the same repository (WBS-6.1). |
 | FR-32 | T-06 | D-02 | The system shall list a repository's branches and tags, each with its latest commit, and let the user switch the branch or tag being browsed. | Must | UI test with a repository that has several branches and tags (WBS-6.1). |
 | FR-33 | T-06 | D-02 | The system shall search the default branch of a repository for a text query. It returns the matching files with their matching lines, each linked to the file view. | Could (optional, WBS-6.2) | A search for a known string returns exactly the files that `git grep` finds on the default branch (WBS-6.2). |
 | FR-34 | T-07 | D-01, D-02 | The system shall let a user with the Maintain role mark a branch as protected and set its rules. The rules state who may push to it directly, who may merge merge requests into it, and how many approvals a merge request needs first. | Must | UI and API tests save the rules and read them back (WBS-7.1). |
 | FR-35 | T-07 | D-01 | The system shall reject a push to a protected branch from any user its rules do not allow. It shall reject force-pushes to a protected branch and its deletion from every user. The `git` client shows the reason. | Must | Integration tests with the real `git` CLI: a direct push, a force-push and a branch deletion are rejected with a message, and the refs stay unchanged (WBS-7.1). |
 | FR-36 | T-07, T-08 | D-01, D-02 | The system shall merge a merge request into a protected branch only when the branch's merge rules allow the merging user and the required number of approvals is reached. | Must | A merge without enough approvals is refused. After approval, the same merge succeeds (WBS-7.1, WBS-8.1). |
 | FR-37 | T-07 | D-01 | The system shall implement the Git LFS protocol over HTTPS, so that a `git` client with `git-lfs` uploads and downloads large files with the same credentials and Read/Write permissions as Git. LFS file locking is not required. | Must | An integration test pushes and clones a repository with LFS-tracked files. A user with only the Read role cannot upload (WBS-7.1). |
-| FR-38 | T-08 | D-01, D-02 | The system shall let a user with the Write role open a merge request from a source branch to a target branch of the same repository, with a title and a description. The author can close it without merging and reopen it. | Must | An E2E test opens, closes and reopens a merge request (WBS-8.2). |
+| FR-38 | T-08 | D-01, D-02 | The system shall let a user with the Write role open a merge request from a source branch to a target branch of the same repository, with a title and a description. Before it is created, the user sees the commits and changes between the two branches. The new merge request gets a number (`!n`) within the repository. The author can close it without merging and reopen it. | Must | An E2E test opens, closes and reopens a merge request (WBS-8.2). |
 | FR-39 | T-08 | D-01, D-02 | The system shall show a merge request's commits and the diff between its source and target branches. Both update when new commits are pushed to the source branch. | Must | An E2E test pushes to the source branch and checks that the diff changes (WBS-8.1, WBS-8.2). |
-| FR-40 | T-08 | D-01, D-02 | The system shall let a user with the Read role comment on a specific line of a merge request's diff, comment on the merge request as a whole, and reply to a comment. | Must | An E2E test adds an inline comment, a general comment and a reply, then reloads the page and finds all three (WBS-8.2). |
+| FR-40 | T-08 | D-01, D-02 | The system shall let a user with the Read role comment on a specific line of a merge request's diff, comment on the merge request as a whole, and reply to a comment. When a later push changes the commented line, the comment is marked as outdated but stays readable. | Must | An E2E test adds an inline comment, a general comment and a reply, then reloads the page and finds all three. A push that changes the commented line marks the inline comment as outdated (WBS-8.2). |
 | FR-41 | T-08 | D-01, D-02 | The system shall let a user with the Write role approve a merge request and withdraw the approval. It shows who has approved. | Must | E2E test (WBS-8.2, M2 demo). |
 | FR-42 | T-08 | D-01, D-02 | The system shall merge a merge request with the strategy the merging user chooses: merge commit, squash or fast-forward. | Must | An integration test runs each strategy and checks the resulting history of the target branch with `git log` (WBS-8.1). |
-| FR-43 | T-08 | D-01, D-02 | The system shall detect when a merge request cannot be merged, because changes conflict or a fast-forward is impossible. It shows the reason and the conflicting files and leaves the target branch unchanged. | Must | Integration test with a prepared conflict: the merge is refused, the conflicting files are listed and the target ref is unchanged (WBS-8.1). |
+| FR-43 | T-08 | D-01, D-02 | The system shall detect when a merge request cannot be merged, because changes conflict or a fast-forward is impossible. It shows the reason and the conflicting files and leaves the target branch unchanged. Whenever a merge is not allowed (conflicts, an impossible fast-forward, missing approvals or a branch rule, FR-36), the merge button in Dash is disabled and the reason is shown next to it. | Must | Integration test with a prepared conflict: the merge is refused, the conflicting files are listed and the target ref is unchanged (WBS-8.1). |
 | FR-44 | T-08 | D-01, D-02 | The system shall list a repository's merge requests filtered by state: open, merged or closed. | Must | UI and API test with merge requests in all three states (WBS-8.2). |
-| FR-45 | T-09 | D-01, D-02 | The system shall let a user with the Read role on a repository create an issue with a title and a description, and comment on issues. The issue's author or a user with the Write role can close and reopen it. | Must | E2E test (WBS-9.1). |
-| FR-46 | T-09 | D-01, D-02 | The system shall let a user with the Write role create labels and milestones in a repository, and set an issue's labels, milestone and one or more assignees. | Must | E2E test (WBS-9.1). |
-| FR-47 | T-09 | D-01, D-02 | The system shall list a repository's issues filtered by state, label, milestone and assignee. | Should | UI and API test with issues that cover each filter value. |
+| FR-45 | T-09 | D-01, D-02 | The system shall let a user with the Read role on a repository create an issue with a title and a description, and comment on issues. A new issue gets a number (`#n`) within the repository. The issue's author or a user with the Write role can close and reopen it. | Must | E2E test (WBS-9.1). |
+| FR-46 | T-09 | D-01, D-02 | The system shall let a user with the Write role create labels and milestones in a repository, and set an issue's labels, milestone and one or more assignees. Every change of labels, milestone, assignees or state is shown in the issue's history with who made it and when. | Must | E2E test: each change appears in the issue's history (WBS-9.1). |
+| FR-47 | T-09 | D-01, D-02 | The system shall list a repository's issues filtered by state, label, milestone and assignee. The chosen filters are kept in the page URL, so a filtered list can be bookmarked and shared. | Should | UI and API test with issues that cover each filter value. Opening the copied URL in a new session shows the same list. |
 | FR-48 | T-09 | D-01, D-02 | When an issue, a merge request or a comment mentions an existing user as `@username`, the system shall create one in-app notification for that user, linking to where the mention was made. | Must | A test mentions an existing user and an unknown name. It finds one notification for the user and none for the unknown name (WBS-9.1). |
 | FR-49 | T-09 | D-01, D-02 | The system shall show a signed-in user an unread-notification counter and a notification list. Both update without a page reload when a new notification arrives, and the user can mark notifications as read. | Must | E2E test with two browser sessions: a mention made in one session updates the counter in the other without a reload. |
 | FR-50 | T-10 | D-04 | The system shall read the pipeline definition from the `.git2-ci.yml` file at the root of the pushed commit. The format describes stages, jobs, each job's container image and script, artifacts and caches. It is documented and published as a JSON schema. | Must | The spec document and the JSON schema exist. Schema tests accept the example files and reject known-bad files (WBS-10.1). |
@@ -130,8 +132,8 @@ The requirements are grouped by Project Plan task. Each one is linked to the tas
 | FR-55 | T-10 | D-04 | A runner shall run each job in a new container started from the job's image through the Docker Engine API, without privileged mode and with CPU and memory limits. It reports the job's exit status and removes the container after the job. | Must | A runner integration test checks the container settings with `docker inspect` and checks that no job container is left afterwards (WBS-10.2). |
 | FR-56 | T-10 | D-04, D-02 | The system shall show a running job's log in the browser as the job prints it, and keep the complete log for viewing after the job ends. | Must | Timestamp test (NFR-14). After the job, the stored log equals the job's output byte for byte (WBS-10.4). |
 | FR-57 | T-10 | D-04, D-02 | The system shall store the files that a job declares as artifacts in object storage, and let users with the Read role download them from the job page. | Must | Run a pipeline with an artifact, download it and compare checksums (WBS-10.4). |
-| FR-58 | T-10 | D-02 | The system shall show three views for each repository: a pipeline list (status, branch, commit and trigger), a pipeline graph of stages and jobs with their status, and a job page with its log. | Must | E2E test (WBS-10.5, M3 demo). |
-| FR-59 | T-10, T-08 | D-02 | The system shall show on each merge request the status of the latest pipeline of its source branch, with a link to that pipeline. | Must | E2E test: the status on the merge request changes from running to passed (WBS-10.5). |
+| FR-58 | T-10 | D-02 | The system shall show three views for each repository: a pipeline list, newest first (status, branch, commit and trigger), a pipeline graph of stages and jobs with their status and duration, and a job page with its log. | Must | E2E test (WBS-10.5, M3 demo). |
+| FR-59 | T-10, T-08 | D-02 | The system shall show on each merge request the status of the latest pipeline of its source branch, with a link to that pipeline. If that pipeline has failed, the merge box shows this as a warning next to the merge button. | Must | E2E test: the status on the merge request changes from running to passed. A failing pipeline shows the warning (WBS-10.5). |
 | FR-60 | T-10 | D-04, D-02 | The system shall let a user with the Write role cancel a pending or running pipeline, which stops its running jobs. The user can also retry a finished pipeline, which creates a new pipeline for the same commit. | Must | Integration and E2E tests. The `retry_pipeline` tool of git2-mcp uses the same API (FR-88). |
 | FR-61 | T-10 | D-04 | The system shall mark a job as failed, with a visible reason, in four cases: its script fails, it exceeds its time limit, its image cannot be pulled, or its runner stops reporting while running it. | Should | One test per failure reason: `script_failure`, `timeout`, `image_pull_failure` and `runner_lost`. |
 | FR-62 | T-10 | D-04, D-02, D-03 | The system shall let a user with the Maintain role define secret CI variables for a repository, and let an instance administrator define them for the whole instance. Secret values are write-only (never shown again), stored encrypted, and given to a job as environment variables only when a runner takes the job. | Should | An API test shows that a stored secret cannot be read back, and database inspection shows only ciphertext. A test job proves delivery by printing the variable's length. |
@@ -257,7 +259,7 @@ The thresholds below are the ones agreed in Project Plan §1.4. Where the Plan g
 
 | User type ID | User type / actor | Description and responsibilities | Goals / typical actions | Related requirement ID(s) |
 |---|---|---|---|---|
-| UT-01 | Software developer | Writes code and works mainly in the Dash plane, using a standard `git` client, the git2 CLI or an AI agent. Has the Read or Write role on repositories, usually through a team. | Sign in; create repositories; push and clone; browse code; open merge requests and comment on them; file and work on issues; watch pipelines; create tokens for tools. | FR-08–FR-13, FR-17–FR-19, FR-22, FR-23, FR-25, FR-27–FR-33, FR-37–FR-40, FR-44, FR-45, FR-47–FR-49, FR-56–FR-60, FR-83–FR-86, FR-91, FR-93 |
+| UT-01 | Software developer | Writes code and works mainly in the Dash plane, using a standard `git` client, the git2 CLI or an AI agent. Has the Read or Write role on repositories, usually through a team. | Sign in; create repositories; push and clone; browse code; open merge requests and comment on them; file and work on issues; watch pipelines; create tokens for tools. | FR-08–FR-13, FR-17–FR-19, FR-22, FR-23, FR-25, FR-27–FR-33, FR-37–FR-40, FR-44, FR-45, FR-47–FR-49, FR-56–FR-60, FR-83–FR-86, FR-91, FR-93, FR-97, FR-98 |
 | UT-02 | Team lead / code reviewer | A senior developer who owns a repository or the repositories of a team, usually with the Maintain role. | Review, approve and merge merge requests; protect branches; plan work with milestones and labels; manage repository CI secrets; delete repositories. | FR-26, FR-34–FR-36, FR-40–FR-43, FR-46, FR-47, FR-59, FR-60, FR-62 |
 | UT-03 | Instance administrator (IT) | An IT or system administrator whose account has the administrator flag. Works in the Admin plane. | Run the setup wizard; manage users, organizations, teams and roles; connect OIDC and LDAP; register runners; change instance settings; configure backups; read the audit log and the health dashboard. | FR-14–FR-16, FR-20, FR-21, FR-23, FR-24, FR-62, FR-64–FR-69, FR-72–FR-74 |
 | UT-04 | Platform operator | IT staff with shell access to the host or the Kubernetes cluster. Often the same person as UT-03, but acting outside the web UI. Keeps the `age` private key. | Install, upgrade and restore git2 with `git2ctl` or Helm; prepare runner hosts. | FR-75–FR-82, FR-92 |
@@ -312,7 +314,7 @@ Next, Murat wants developers to use their existing company accounts. In the Admi
 
 **SC-03 — First sign-in, first repository and first push**  
 **Persona:** P-01 — Deniz  
-**Related requirements:** FR-08, FR-23, FR-24, FR-25, FR-17, FR-27, FR-30–FR-32, FR-93
+**Related requirements:** FR-08, FR-23, FR-24, FR-25, FR-17, FR-27, FR-30–FR-32, FR-97, FR-98, FR-93
 
 Deniz opens git2 for the first time and signs in with the usual LDAP username and password. git2 creates Deniz's account and, because Deniz is in `payments-dev`, adds Deniz to the Payments team. Deniz creates the repository `payment-gateway` in the `payments` organization with the default branch `main`, and git2 shows the HTTPS clone URL and the first-push steps. Git over HTTPS needs a token, so Deniz creates a personal access token with the read-write scope, copies it (it is shown only once) and pushes the existing code with the normal `git` client. Back in Dash, Deniz browses the file tree, opens a Go file with syntax highlighting, switches to the `v2.2.0` tag and reads the history of `main`. Everything works as the user guide describes. If the optional SSH transport is delivered, Deniz could push with an SSH key instead. The scenario ends with the team's code hosted on the bank's own server.
 
@@ -395,7 +397,7 @@ Each user-facing WBS activity has a user story (`US-##`). Internal and project-m
 | SC-03 | WBS-5.1 | **US-11** — As a developer, I want to create and delete repositories myself so that I do not wait for IT. | FR-25, FR-26 |
 | SC-03 | WBS-5.2 | **US-12** — As a developer, I want to clone and push over HTTPS with my usual `git` client so that I keep my tools. | FR-27, FR-28 |
 | SC-03 | WBS-5.3 | **US-13** *(optional)* — As a developer, I want to clone and push over SSH with my registered key so that I need no token in my Git configuration. | FR-29 |
-| SC-03 | WBS-6.1 | **US-14** — As a developer, I want to browse files, branches, tags and commits with syntax highlighting so that I can read code without cloning it. | FR-30–FR-32 |
+| SC-03 | WBS-6.1 | **US-14** — As a developer, I want to browse files, branches, tags and commits with syntax highlighting so that I can read code without cloning it. | FR-30–FR-32, FR-97, FR-98 |
 | SC-09 | WBS-6.2 | **US-15** *(optional)* — As a developer, or an AI agent working for me, I want to search a repository's code so that I can find where something is defined. | FR-33 |
 | SC-06 | WBS-7.1 | **US-16** — As a team lead, I want to protect `main` and keep large files in Git LFS so that `main` changes only through reviewed merges and the history stays small. | FR-34–FR-37 |
 | SC-05 | WBS-8.1 | **US-17** — As a reviewer, I want to merge with a merge commit, squash or fast-forward, and to learn about conflicts before anything changes, so that the history of `main` looks the way the team agreed. | FR-39, FR-42, FR-43 |
@@ -1051,7 +1053,7 @@ flowchart LR
 | T-03 | FR-14–FR-20 | UC-07, UC-08 | SC-02, SC-03, SC-09 |
 | T-04 | FR-21–FR-24 | UC-05, UC-06 | SC-02, SC-03 |
 | T-05 | FR-25–FR-29 | UC-10, UC-11 | SC-03, SC-13 |
-| T-06 | FR-30–FR-33 | UC-12, UC-13 | SC-03, SC-09 |
+| T-06 | FR-30–FR-33, FR-97, FR-98 | UC-12, UC-13 | SC-03, SC-09 |
 | T-07 | FR-34–FR-37 | UC-14, UC-15, UC-18 | SC-06, SC-05 |
 | T-08 | FR-36, FR-38–FR-44, FR-59 | UC-16, UC-17, UC-18 | SC-05 |
 | T-09 | FR-45–FR-49 | UC-19, UC-20 | SC-07 |
@@ -1583,19 +1585,19 @@ Every development task from Project Plan §1.3 is covered. The optional items (F
 | **Goal / Purpose** | A developer reads files and history of any branch or tag in the browser, without cloning. |
 | **Actor(s)** | UT-01 — Software developer (also UT-02) |
 | **Related Project Plan task(s)** | T-06 |
-| **Related functional requirement(s)** | FR-30, FR-31, FR-32 |
+| **Related functional requirement(s)** | FR-30, FR-31, FR-32, FR-97, FR-98 |
 
 **Pre-condition(s):**  
 - The developer is signed in and has the Read role on the repository.
 
 **Main success flow:**
 
-1. **Developer:** Opens the repository in Dash.
+1. **Developer:** Opens Dash and selects the repository from the repository list (FR-97).
 2. **System:** Shows the file tree of the default branch and its latest commit.
 3. **Developer:** Selects another branch or tag from the selector.
 4. **System:** Shows the file tree of that branch or tag (FR-32).
 5. **Developer:** Opens a file.
-6. **System:** Shows the file's content with syntax highlighting (FR-30).
+6. **System:** Shows the file's content with syntax highlighting and line numbers (FR-30).
 7. **Developer:** Opens the commit history and selects a commit.
 8. **System:** Shows the commit's message, author and date, and the diff of each changed file (FR-31).
 
@@ -1603,10 +1605,16 @@ Every development task from Project Plan §1.3 is covered. The optional items (F
 
 - **A1 — Empty repository (branches from step 2):**
   1. The repository has no commits yet.
-  2. The system shows the clone URL and the first-push instructions instead of a file tree.
+  2. The system shows the clone URL and the first-push instructions instead of a file tree (FR-98).
 - **A2 — Binary or very large file (branches from step 6):**
-  1. The file cannot be displayed as text.
-  2. The system says so and offers a download instead of a highlighted view.
+  1. The file is binary, larger than 1 MiB or stored in Git LFS.
+  2. The system shows its size and offers a download instead of a highlighted view (FR-30).
+- **A4 — Link to a line (branches from step 6):**
+  1. The developer selects a line number.
+  2. The URL now points to that line and can be shared; opening it scrolls to and highlights the line (FR-30).
+- **A5 — History of a file or directory (branches from step 7):**
+  1. The developer opens the history from a file or directory instead of the branch.
+  2. The system lists only the commits that changed it (FR-31).
 - **A3 — Search instead of browsing (branches from step 3):**
   1. The developer searches the code (UC-13, optional).
   2. The developer opens a result, and the flow continues at step 6 at the matching line.
@@ -1614,7 +1622,8 @@ Every development task from Project Plan §1.3 is covered. The optional items (F
 **Exception / error flows (if applicable):**
 
 - **E1 — Branch, tag or path does not exist (occurs at step 4 or 6):** The system shows a "not found" page with a link back to the default branch.
-- **E2 — No Read role (occurs at step 1):** The system refuses access (FR-16).
+- **E2 — No Read role (occurs at step 1):** The repository is not in the list, and its URL shows "not found" (FR-16, FR-97).
+- **E3 — Very large commit (occurs at step 8):** The commit changes more than 300 files. The system shows the first 300 and says that the list is truncated (FR-31).
 
 **Post-condition(s):**  
 - Nothing has changed in the repository; browsing is read-only.
@@ -1753,13 +1762,13 @@ Every development task from Project Plan §1.3 is covered. The optional items (F
 2. **Developer:** Chooses the source branch and the target branch.
 3. **System:** Shows the commits and the diff between the two branches as a preview (FR-39).
 4. **Developer:** Enters a title and a description, optionally mentioning reviewers as `@username`, and submits.
-5. **System:** Creates the merge request in the open state, creates notifications for the mentioned users (FR-48), and shows the merge request page with the latest pipeline status of the source branch (FR-59).
+5. **System:** Creates the merge request in the open state with the next number (`!n`), creates notifications for the mentioned users (FR-48), and shows the merge request page with the latest pipeline status of the source branch (FR-59).
 
 **Alternative flows:**
 
 - **A1 — New commits after opening (branches from step 5):**
   1. The developer pushes more commits to the source branch.
-  2. The system updates the commits, the diff and the pipeline status of the merge request (FR-39).
+  2. The system updates the commits, the diff and the pipeline status of the merge request (FR-39). Inline comments on lines that changed are marked as outdated (FR-40).
 - **A2 — Close and reopen (branches from step 5):**
   1. The author closes the merge request without merging.
   2. It moves to the closed list (FR-44). The author can reopen it later (FR-38).
@@ -1833,7 +1842,7 @@ Every development task from Project Plan §1.3 is covered. The optional items (F
 **Main success flow:**
 
 1. **Team lead:** Opens the merge request.
-2. **System:** Shows the merge box: whether the merge request can be merged, the latest pipeline status, the approvals against the required number, and the merge strategies.
+2. **System:** Shows the merge box: whether the merge request can be merged, the latest pipeline status, the approvals against the required number, and the merge strategies. If the merge is not allowed, the merge button is disabled and the reason is shown (FR-43); if the latest pipeline failed, a warning is shown (FR-59).
 3. **Team lead:** Chooses merge commit, squash or fast-forward and selects **Merge** (FR-42).
 4. **System:** Checks the branch rules again (FR-36), performs the merge, updates the target branch and marks the merge request as merged.
 5. **System:** Records the update of the target branch as a push, which starts a pipeline on the target branch (UC-21, FR-51).
