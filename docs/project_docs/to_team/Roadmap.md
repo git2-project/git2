@@ -26,7 +26,7 @@ Status 05.11: Beste took the CI for this repo. A2, A3 and A10 are in `.github/wo
 
 | # | Task | Done when | Owner |
 |---|---|---|---|
-| A1 | Branch protection on `main` (GitHub settings) | PR required, 1 approving review, required checks `ci`, `migrations-check`, `changelog`; no force push; applies to admins too | repo admin |
+| A1 | Branch protection on `main` (GitHub settings) | PR required, 1 approving review, required checks `ci`, `web`, `migrations-check`, `changelog`; no force push; applies to admins too | repo admin |
 | A2 | `.github/workflows/ci.yml` (on PR and push to `main`) | `go vet`, `go build ./...`, `go test` green; a `postgres` service container sets `TEST_POSTGRES_DSN`, so the integration tests run in CI for the first time | Beste (in review) |
 | A3 | `.github/workflows/migrations.yml`, job **`migrations-check`** (on PR to `main`) | Fails on: a name that is not `NNN_<service>_<what>.sql`, a missing `-- ` first line, a duplicate or skipped `NNN`, any modified, renamed or deleted file under `migrations/` that already exists on `main`. Then applies **all** migrations from scratch to a Postgres container on the same major version as Supabase | Beste (in review) |
 | A4 | Same workflow, job **`migrate`** (on push to `main` touching `migrations/**`, plus `workflow_dispatch`) | Runs in GitHub Environment `supabase-dev` with secret `SUPABASE_DB_URL`; `concurrency: supabase-dev-migrate` (no cancel), so two merges never race; writes the `--status` list to the job summary | deferred: Supabase access |

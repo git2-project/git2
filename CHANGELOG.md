@@ -7,7 +7,10 @@ Every PR adds its lines under `## [Unreleased]`: one line per change, starting w
 ## [Unreleased]
 
 ### Added
-- ci: GitHub Actions on every pull request: `ci` (Go vet, build, `go test -race` with a throwaway Postgres), `web` (typecheck, lint, test, build), `migrations-check` and `changelog`
+- ci: `ci` check on every pull request: gofmt, vet, build, migrations applied to a throwaway Postgres, `go test -race` with the integration tests (#20)
+- ci: `web` check: typecheck, lint, test and build of `web/` (#20)
+- ci: `migrations-check`: names, numbering, first-line comments and frozen files (`helpers/ci/check-migrations.sh`), then all migrations applied from scratch (#20)
+- ci: `changelog` check: the PR touches `CHANGELOG.md` unless it has the `no-changelog` label (#20)
 - auth-svc: `POST /api/auth/register`, `/login`, `/refresh`, `/logout` and `GET /api/auth/me`; tokens in `X-Access-Token` / `X-Refresh-Token` headers, refresh sessions rotated in Redis, per-IP rate limits on the public routes
 - auth-svc: `RequireAuth` middleware and `UserID(ctx)` for other services
 - internal: shared config, Postgres pool, Redis client, JWT (HS256), bcrypt, HTTP helpers and rate limiting

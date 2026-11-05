@@ -32,7 +32,7 @@ jobs:
           --health-cmd "pg_isready -U postgres"
           --health-interval 2s --health-timeout 5s --health-retries 30
     env:
-      DATABASE_URL: postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable
+      POSTGRES_DSN: postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable
     steps:
       - uses: actions/checkout@v4
         with:
@@ -44,10 +44,9 @@ jobs:
           BASE_REF: ${{ github.base_ref }}
         run: helpers/ci/check-migrations.sh "origin/$BASE_REF"
 
+      # helpers/dev/migrate.sh is what make migrate runs: each file in its own
+      # transaction, recorded in schema_migrations.
       - name: Apply every migration from scratch
         run: |
-          for f in migrations/*.sql; do
-            echo "==> $f"
-            psql "$DATABASE_URL" -v ON_ERROR_STOP=1 --single-transaction -q -f "$f"
-          done
-          psql "$DATABASE_URL" -c '\dn'
+          bash helpers/dev/migrate.sh
+          bash helpers/dev/migrate.sh --status

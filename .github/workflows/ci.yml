@@ -1,5 +1,6 @@
-# Build and test git2 (Roadmap A2). Job names are the required status checks
-# on protected branches, so keep them stable: ci, web.
+# Build and test git2 (Roadmap A2). Job names are required status checks on
+# protected branches (Roadmap A1: ci, web, migrations-check, changelog), so
+# keep them stable.
 name: ci
 
 on:
@@ -52,12 +53,12 @@ jobs:
       - name: go build
         run: go build ./...
 
+      # The same runner developers use (make migrate), pointed at the
+      # throwaway database.
       - name: Apply migrations to the test database
-        run: |
-          for f in migrations/*.sql; do
-            echo "==> $f"
-            psql "$TEST_POSTGRES_DSN" -v ON_ERROR_STOP=1 --single-transaction -q -f "$f"
-          done
+        env:
+          POSTGRES_DSN: ${{ env.TEST_POSTGRES_DSN }}
+        run: bash helpers/dev/migrate.sh
 
       # Redis-backed code is tested against miniredis; Postgres code against
       # the service above.
