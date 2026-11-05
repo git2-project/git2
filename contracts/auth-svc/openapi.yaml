@@ -209,9 +209,11 @@ paths:
       summary: Create the first admin with the one-time setup token
       description: |
         The setup token is printed once in the server log at startup (or set
-        with `GIT2_SETUP_TOKEN`, at least 32 characters). Every start without
-        an admin replaces it, so a lost token is fixed by a restart. It works
-        once; afterwards this endpoint answers 409. Rate limit: 10 per minute per client IP.
+        with `GIT2_SETUP_TOKEN`, at least 32 characters) and works for one
+        hour. Until then a restart or a second git2 process keeps it; after
+        it, the next start prints a new one. It works once. Once an active
+        admin exists this endpoint answers 409 to every request.
+        Rate limit: 10 per minute per client IP.
       requestBody:
         required: true
         content:
@@ -225,7 +227,7 @@ paths:
               schema: { $ref: '#/components/schemas/User' }
         '400': { $ref: '#/components/responses/BadRequest' }
         '403':
-          description: '`invalid setup token`. Not 401, which clients read as "signed out".'
+          description: '`invalid setup token`, or `setup token expired; restart git2 to get a new one` (only for the right token). Not 401, which clients read as "signed out".'
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }

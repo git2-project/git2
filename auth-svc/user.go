@@ -12,6 +12,7 @@ import (
 
 var (
 	ErrNotFound       = errors.New("user not found")
+	ErrLastAdmin      = errors.New("the last active admin cannot be disabled")
 	ErrEmailExists    = errors.New("email already registered")
 	ErrUsernameExists = errors.New("username already taken")
 )
@@ -23,9 +24,12 @@ type User struct {
 	PasswordHash string
 	IsActive     bool
 	// Role is the user's instance role (admin, auditor or user).
-	Role      Role
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	Role Role
+	// TokensValidAfter is set when the user was disabled; sessions that
+	// began before it are refused. Nil if never disabled.
+	TokensValidAfter *time.Time
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
 }
 
 // Usernames end up in repository URLs (/<username>/<repo>), so they are

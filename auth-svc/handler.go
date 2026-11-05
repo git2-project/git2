@@ -160,6 +160,20 @@ func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, http.StatusServiceUnavailable, "could not refresh, try again")
 		return
 	}
+	var sessionStart time.Time
+	if claims.SessionStart != nil {
+		sessionStart = claims.SessionStart.Time
+	}
+	if sessionBeganBeforeDisable(u, sessionStart) {
+		// This covers sessions Redis never listed (from before the per-user
+		// set existed, or created by a sign-in racing the disable). Best
+		// effort: the refusal does not depend on the delete.
+		if err := deleteSession(r.Context(), h.deps.Redis, u.ID, sid); err != nil {
+			slog.Warn("refresh: delete session from before a disable", "err", err)
+		}
+		httpx.Error(w, http.StatusUnauthorized, "invalid or expired refresh token")
+		return
+	}
 
 	access, err := h.deps.JWT.IssueAccess(u.ID)
 	if err != nil {
@@ -167,7 +181,7 @@ func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, http.StatusInternalServerError, "could not issue token")
 		return
 	}
-	refresh, jti, err := h.deps.JWT.IssueRefresh(u.ID, sid)
+	refresh, jti, err := h.deps.JWT.IssueRefresh(u.ID, sid, sessionStart)
 	if err != nil {
 		slog.Error("issue refresh token", "err", err)
 		httpx.Error(w, http.StatusInternalServerError, "could not issue token")
@@ -243,7 +257,7 @@ func (h *Handler) Me(w http.ResponseWriter, r *http.Request) {
 // hand out a refresh token that could never be rotated.
 func (h *Handler) startSession(ctx context.Context, userID uuid.UUID) (string, error) {
 	sid := uuid.NewString()
-	refresh, jti, err := h.deps.JWT.IssueRefresh(userID, sid)
+	refresh, jti, err := h.deps.JWT.IssueRefresh(userID, sid, time.Now())
 	if err != nil {
 		return "", err
 	}
@@ -263,4 +277,14 @@ func (h *Handler) writeTokenHeaders(w http.ResponseWriter, access, refresh strin
 	w.Header().Set("X-Refresh-Token", refresh)
 	w.Header().Set("X-Access-Expires-In", strconv.FormatInt(int64(h.deps.JWT.AccessExpiry().Seconds()), 10))
 	w.Header().Set("Cache-Control", "no-store")
+}
+
+// sessionBeganBeforeDisable reports whether a session that began at start
+// (zero when the token predates the claim) began before the user was last
+// disabled, plus DisableGrace.
+func sessionBeganBeforeDisable(u User, start time.Time) bool {
+	if u.TokensValidAfter == nil {
+		return false
+	}
+	return !start.After(u.TokensValidAfter.Add(DisableGrace))
 }

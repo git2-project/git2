@@ -64,17 +64,91 @@ func TestPostgresStore(t *testing.T) {
 		t.Errorf("FindByID(missing) err = %v, want ErrNotFound", err)
 	}
 
-	if err := store.SetActive(ctx, created.ID, false); err != nil {
-		t.Fatalf("SetActive(false): %v", err)
+	at, err := store.Disable(ctx, created.ID)
+	if err != nil {
+		t.Fatalf("Disable: %v", err)
 	}
-	if got, err := store.FindByID(ctx, created.ID); err != nil || got.IsActive || !got.UpdatedAt.After(created.UpdatedAt) {
-		t.Errorf("after SetActive(false): active=%v updated_at=%v (was %v), err=%v", got.IsActive, got.UpdatedAt, created.UpdatedAt, err)
+	got, err := store.FindByID(ctx, created.ID)
+	if err != nil || got.IsActive || got.TokensValidAfter == nil || !got.TokensValidAfter.Equal(at) || !got.UpdatedAt.After(created.UpdatedAt) {
+		t.Errorf("after Disable: active=%v tokens_valid_after=%v (returned %v) updated_at=%v, err=%v", got.IsActive, got.TokensValidAfter, at, got.UpdatedAt, err)
 	}
-	if err := store.SetActive(ctx, created.ID, true); err != nil {
-		t.Fatalf("SetActive(true): %v", err)
+	if err := store.Enable(ctx, created.ID); err != nil {
+		t.Fatalf("Enable: %v", err)
 	}
-	if err := store.SetActive(ctx, uuid.New(), false); !errors.Is(err, ErrNotFound) {
-		t.Errorf("SetActive(missing) err = %v, want ErrNotFound", err)
+	if got, _ := store.FindByID(ctx, created.ID); !got.IsActive || got.TokensValidAfter == nil {
+		t.Errorf("after Enable: active=%v tokens_valid_after=%v; want active and kept", got.IsActive, got.TokensValidAfter)
+	}
+	if _, err := store.Disable(ctx, uuid.New()); !errors.Is(err, ErrNotFound) {
+		t.Errorf("Disable(missing) err = %v, want ErrNotFound", err)
+	}
+	if err := store.Enable(ctx, uuid.New()); !errors.Is(err, ErrNotFound) {
+		t.Errorf("Enable(missing) err = %v, want ErrNotFound", err)
+	}
+}
+
+// TestPostgresLastAdmin disables two admins at the same time, many times
+// over: the row locks must let exactly one through, so one active admin is
+// always left. Skips on a database that already has an active admin.
+func TestPostgresLastAdmin(t *testing.T) {
+	dsn := os.Getenv("TEST_POSTGRES_DSN")
+	if dsn == "" {
+		t.Skip("TEST_POSTGRES_DSN not set")
+	}
+	ctx := context.Background()
+	db, err := database.NewPostgresPool(ctx, dsn, 10)
+	if err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	t.Cleanup(db.Close)
+	store := NewPostgresStore(db)
+	if exists, err := store.AdminExists(ctx); err != nil || exists {
+		t.Skipf("database already has an active admin (err %v)", err)
+	}
+	suffix := uuid.NewString()[:8]
+	t.Cleanup(func() {
+		_, _ = db.Exec(ctx, `DELETE FROM auth_svc.users WHERE username LIKE $1`, "la-"+suffix+"-%")
+	})
+
+	for round := range 10 {
+		var ids [2]uuid.UUID
+		for i := range ids {
+			name := fmt.Sprintf("la-%s-%d-%d", suffix, round, i)
+			u, err := store.Create(ctx, User{Email: name + "@example.com", Username: name, PasswordHash: "x", IsActive: true, Role: RoleAdmin})
+			if err != nil {
+				t.Fatalf("create admin: %v", err)
+			}
+			ids[i] = u.ID
+		}
+		errs := make([]error, 2)
+		var wg sync.WaitGroup
+		for i := range ids {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				_, errs[i] = store.Disable(ctx, ids[i])
+			}()
+		}
+		wg.Wait()
+		ok, last := 0, 0
+		for _, err := range errs {
+			switch {
+			case err == nil:
+				ok++
+			case errors.Is(err, ErrLastAdmin):
+				last++
+			default:
+				t.Fatalf("round %d: unexpected error %v", round, err)
+			}
+		}
+		if ok != 1 || last != 1 {
+			t.Fatalf("round %d: %d disabled, %d refused; want 1 and 1", round, ok, last)
+		}
+		if exists, _ := store.AdminExists(ctx); !exists {
+			t.Fatalf("round %d: no active admin left", round)
+		}
+		if _, err := db.Exec(ctx, `DELETE FROM auth_svc.users WHERE username LIKE $1`, fmt.Sprintf("la-%s-%d-%%", suffix, round)); err != nil {
+			t.Fatal(err)
+		}
 	}
 }
 
@@ -152,8 +226,12 @@ func TestPostgresSetup(t *testing.T) {
 	})
 
 	token := "integration-setup-token-" + suffix + "-0123456789"
-	if tok, err := PrepareSetup(ctx, store, token); err != nil || tok != "" {
-		t.Fatalf("PrepareSetup = %q, %v", tok, err)
+	if st, err := PrepareSetup(ctx, store, token); err != nil || st.Token != "" || st.Done || st.Kept {
+		t.Fatalf("PrepareSetup = %+v, %v", st, err)
+	}
+	// A generated token does not replace the fixed one while it is valid.
+	if st, err := PrepareSetup(ctx, store, ""); err != nil || !st.Kept || st.Token != "" {
+		t.Fatalf("second PrepareSetup = %+v, %v; want Kept", st, err)
 	}
 	var stored string
 	if err := db.QueryRow(ctx, `SELECT token_sha256 FROM auth_svc.setup_token`).Scan(&stored); err != nil || stored != hashSetupToken(token) {
@@ -199,8 +277,8 @@ func TestPostgresSetup(t *testing.T) {
 	if admins != 1 || tokens != 0 {
 		t.Errorf("admins = %d, setup tokens = %d; want 1 and 0", admins, tokens)
 	}
-	if put, err := store.PutSetupToken(ctx, hashSetupToken("again")); err != nil || put {
-		t.Errorf("PutSetupToken after setup = %v, %v; want false", put, err)
+	if res, err := store.PutSetupToken(ctx, hashSetupToken("again"), true); err != nil || res.Stored || !res.AdminExists {
+		t.Errorf("PutSetupToken after setup = %+v, %v; want AdminExists", res, err)
 	}
 
 	// The goroutines above rarely overlap in practice, so prove the lock

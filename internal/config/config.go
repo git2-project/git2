@@ -31,6 +31,7 @@ type Config struct {
 
 	// SetupToken (GIT2_SETUP_TOKEN) fixes the one-time first-admin setup
 	// token for scripted installs. Empty: auth-svc generates one and logs it.
+	// Its length is checked by authsvc.PrepareSetup.
 	SetupToken string
 }
 
@@ -71,9 +72,6 @@ func Load() (*Config, error) {
 	}
 	if len(cfg.JWTSecret) < 32 {
 		return nil, fmt.Errorf("JWT_SECRET must be at least 32 characters")
-	}
-	if cfg.SetupToken != "" && len(cfg.SetupToken) < 32 {
-		return nil, fmt.Errorf("GIT2_SETUP_TOKEN must be at least 32 characters")
 	}
 	return cfg, nil
 }

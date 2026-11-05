@@ -33,7 +33,7 @@ func TestAccessRoundTrip(t *testing.T) {
 
 func TestRefreshCarriesSessionAndJTI(t *testing.T) {
 	m := NewManager(secret, time.Minute, time.Hour)
-	tok, jti, err := m.IssueRefresh(uuid.New(), "sid-1")
+	tok, jti, err := m.IssueRefresh(uuid.New(), "sid-1", time.Now())
 	if err != nil {
 		t.Fatalf("IssueRefresh: %v", err)
 	}
@@ -46,11 +46,36 @@ func TestRefreshCarriesSessionAndJTI(t *testing.T) {
 	}
 }
 
+func TestRefreshCarriesSessionStart(t *testing.T) {
+	m := NewManager(secret, time.Minute, time.Hour)
+	start := time.Now().Add(-time.Hour)
+	tok, _, _ := m.IssueRefresh(uuid.New(), "sid", start)
+	claims, err := m.Parse(tok, PurposeRefresh)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	// Times travel as fractional seconds, so parsing can land 1 ms off.
+	if claims.SessionStart == nil || abs(claims.SessionStart.UnixMilli()-start.UnixMilli()) > 1 {
+		t.Errorf("SessionStart = %v, want %v (±1 ms)", claims.SessionStart, start)
+	}
+
+	// A zero start (rotating a token from before the claim) leaves it out.
+	tok, _, _ = m.IssueRefresh(uuid.New(), "sid", time.Time{})
+	if claims, _ := m.Parse(tok, PurposeRefresh); claims.SessionStart != nil {
+		t.Errorf("SessionStart = %v for a zero start, want nil", claims.SessionStart)
+	}
+	// Access tokens never carry it.
+	access, _ := m.IssueAccess(uuid.New())
+	if claims, _ := m.Parse(access, PurposeAccess); claims.SessionStart != nil {
+		t.Errorf("access token carries SessionStart %v", claims.SessionStart)
+	}
+}
+
 func TestParseRejects(t *testing.T) {
 	m := NewManager(secret, time.Minute, time.Hour)
 	uid := uuid.New()
 	access, _ := m.IssueAccess(uid)
-	refresh, _, _ := m.IssueRefresh(uid, "sid")
+	refresh, _, _ := m.IssueRefresh(uid, "sid", time.Now())
 	expired, _ := NewManager(secret, -time.Minute, time.Hour).IssueAccess(uid)
 	foreign, _ := NewManager("another-secret-that-is-32-chars-long", time.Minute, time.Hour).IssueAccess(uid)
 	hs384, _ := jwt.NewWithClaims(jwt.SigningMethodHS384, Claims{
@@ -80,4 +105,11 @@ func TestParseRejects(t *testing.T) {
 			}
 		})
 	}
+}
+
+func abs(n int64) int64 {
+	if n < 0 {
+		return -n
+	}
+	return n
 }

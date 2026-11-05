@@ -39,6 +39,11 @@ type Claims struct {
 	// (sess:<sid> in Redis). Set on refresh tokens only and carried unchanged
 	// across rotation.
 	SessionID string `json:"sid,omitempty"`
+	// SessionStart is when the session began (sign-in), on refresh tokens
+	// only and carried unchanged across rotation like SessionID. auth-svc
+	// compares it with the moment a user was disabled. Missing on refresh
+	// tokens issued before it existed.
+	SessionStart *jwt.NumericDate `json:"sat,omitempty"`
 	jwt.RegisteredClaims
 }
 
@@ -53,13 +58,14 @@ func NewManager(secret string, access, refresh time.Duration) *Manager {
 }
 
 // issue mints a signed token and returns it together with its JTI.
-func (m *Manager) issue(userID uuid.UUID, purpose TokenPurpose, ttl time.Duration, sid string) (token, jti string, err error) {
+func (m *Manager) issue(userID uuid.UUID, purpose TokenPurpose, ttl time.Duration, sid string, sessionStart *jwt.NumericDate) (token, jti string, err error) {
 	now := time.Now()
 	jti = uuid.NewString()
 	claims := Claims{
-		UserID:    userID,
-		Purpose:   purpose,
-		SessionID: sid,
+		UserID:       userID,
+		Purpose:      purpose,
+		SessionID:    sid,
+		SessionStart: sessionStart,
 		RegisteredClaims: jwt.RegisteredClaims{
 			IssuedAt:  jwt.NewNumericDate(now),
 			ExpiresAt: jwt.NewNumericDate(now.Add(ttl)),
@@ -75,15 +81,23 @@ func (m *Manager) issue(userID uuid.UUID, purpose TokenPurpose, ttl time.Duratio
 }
 
 func (m *Manager) IssueAccess(userID uuid.UUID) (string, error) {
-	token, _, err := m.issue(userID, PurposeAccess, m.accessExpiry, "")
+	token, _, err := m.issue(userID, PurposeAccess, m.accessExpiry, "", nil)
 	return token, err
 }
 
 // IssueRefresh issues a refresh token bound to session id sid and returns it
 // together with its JTI, so the caller can record the session's currently
 // valid JTI without re-parsing.
-func (m *Manager) IssueRefresh(userID uuid.UUID, sid string) (token, jti string, err error) {
-	return m.issue(userID, PurposeRefresh, m.refreshExpiry, sid)
+//
+// sessionStart is when the session began: time.Now() at sign-in, and the
+// SessionStart of the presented token on rotation. A zero time (rotating a
+// token from before the claim existed) leaves the claim out.
+func (m *Manager) IssueRefresh(userID uuid.UUID, sid string, sessionStart time.Time) (token, jti string, err error) {
+	var sat *jwt.NumericDate
+	if !sessionStart.IsZero() {
+		sat = jwt.NewNumericDate(sessionStart)
+	}
+	return m.issue(userID, PurposeRefresh, m.refreshExpiry, sid, sat)
 }
 
 func (m *Manager) Parse(tokenString string, expected TokenPurpose) (*Claims, error) {

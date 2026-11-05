@@ -29,7 +29,8 @@ type memStore struct {
 	// lookupDelay slows FindByID down, widening any race around it.
 	lookupDelay time.Duration
 	// setupHash is the stored setup token hash; "" means no row.
-	setupHash string
+	setupHash    string
+	setupCreated time.Time
 }
 
 func newMemStore() *memStore { return &memStore{users: map[uuid.UUID]User{}} }
@@ -94,7 +95,7 @@ func (s *memStore) setFail(err error) {
 
 func (s *memStore) adminExistsLocked() bool {
 	for _, u := range s.users {
-		if u.Role == RoleAdmin {
+		if u.Role == RoleAdmin && u.IsActive {
 			return true
 		}
 	}
@@ -110,17 +111,20 @@ func (s *memStore) AdminExists(context.Context) (bool, error) {
 	return s.adminExistsLocked(), nil
 }
 
-func (s *memStore) PutSetupToken(_ context.Context, hash string) (bool, error) {
+func (s *memStore) PutSetupToken(_ context.Context, hash string, replace bool) (PutSetupResult, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.fail != nil {
-		return false, s.fail
+		return PutSetupResult{}, s.fail
 	}
 	if s.adminExistsLocked() {
-		return false, nil
+		return PutSetupResult{AdminExists: true}, nil
 	}
-	s.setupHash = hash
-	return true, nil
+	if s.setupHash != "" && !replace && time.Since(s.setupCreated) < SetupTokenTTL {
+		return PutSetupResult{ExpiresAt: s.setupCreated.Add(SetupTokenTTL)}, nil
+	}
+	s.setupHash, s.setupCreated = hash, time.Now()
+	return PutSetupResult{Stored: true, ExpiresAt: s.setupCreated.Add(SetupTokenTTL)}, nil
 }
 
 // CreateFirstAdmin mirrors PostgresStore: the whole check-create-burn runs
@@ -136,6 +140,8 @@ func (s *memStore) CreateFirstAdmin(_ context.Context, hash string, u User) (Use
 		return User{}, ErrSetupDone
 	case s.setupHash == "" || s.setupHash != hash:
 		return User{}, ErrBadSetupToken
+	case time.Since(s.setupCreated) >= SetupTokenTTL:
+		return User{}, ErrSetupTokenExpired
 	case s.adminExistsLocked():
 		s.setupHash = ""
 		return User{}, ErrSetupDone
@@ -160,7 +166,36 @@ func (s *memStore) setRole(email string, role Role) {
 	}
 }
 
-func (s *memStore) SetActive(_ context.Context, id uuid.UUID, active bool) error {
+// Disable mirrors PostgresStore.Disable, including the last-admin rule.
+func (s *memStore) Disable(_ context.Context, id uuid.UUID) (time.Time, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.fail != nil {
+		return time.Time{}, s.fail
+	}
+	u, ok := s.users[id]
+	if !ok {
+		return time.Time{}, ErrNotFound
+	}
+	if u.Role == RoleAdmin && u.IsActive {
+		active := 0
+		for _, o := range s.users {
+			if o.Role == RoleAdmin && o.IsActive {
+				active++
+			}
+		}
+		if active == 1 {
+			return time.Time{}, ErrLastAdmin
+		}
+	}
+	now := time.Now()
+	u.IsActive = false
+	u.TokensValidAfter = &now
+	s.users[id] = u
+	return now, nil
+}
+
+func (s *memStore) Enable(_ context.Context, id uuid.UUID) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.fail != nil {
@@ -170,7 +205,7 @@ func (s *memStore) SetActive(_ context.Context, id uuid.UUID, active bool) error
 	if !ok {
 		return ErrNotFound
 	}
-	u.IsActive = active
+	u.IsActive = true
 	s.users[id] = u
 	return nil
 }

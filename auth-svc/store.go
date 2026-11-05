@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -21,7 +22,7 @@ type UserStore interface {
 
 // auth-svc owns the auth_svc schema (one schema per service). Not "auth":
 // Supabase reserves that schema for its own Auth product.
-const userColumns = `id, email, username, password_hash, is_active, role, created_at, updated_at`
+const userColumns = `id, email, username, password_hash, is_active, role, tokens_valid_after, created_at, updated_at`
 
 type PostgresStore struct {
 	db *pgxpool.Pool
@@ -33,7 +34,7 @@ func NewPostgresStore(db *pgxpool.Pool) *PostgresStore {
 
 func scanUser(row pgx.Row) (User, error) {
 	var u User
-	err := row.Scan(&u.ID, &u.Email, &u.Username, &u.PasswordHash, &u.IsActive, &u.Role, &u.CreatedAt, &u.UpdatedAt)
+	err := row.Scan(&u.ID, &u.Email, &u.Username, &u.PasswordHash, &u.IsActive, &u.Role, &u.TokensValidAfter, &u.CreatedAt, &u.UpdatedAt)
 	return u, err
 }
 
@@ -81,11 +82,55 @@ func (s *PostgresStore) FindByID(ctx context.Context, id uuid.UUID) (User, error
 	return s.findOne(ctx, `SELECT `+userColumns+` FROM auth_svc.users WHERE id = $1`, id)
 }
 
-// SetActive enables or disables an account. ErrNotFound for an unknown id.
-func (s *PostgresStore) SetActive(ctx context.Context, id uuid.UUID, active bool) error {
-	tag, err := s.db.Exec(ctx, `UPDATE auth_svc.users SET is_active = $2, updated_at = now() WHERE id = $1`, id, active)
+// Disable turns the account off and records the moment in
+// tokens_valid_after, using the database clock. It refuses to disable the
+// last active admin (ErrLastAdmin): the active admin rows are locked first,
+// so two concurrent disables of the last two admins cannot both succeed.
+// ErrNotFound for an unknown id. Disabling a disabled user is allowed and
+// moves the moment forward.
+func (s *PostgresStore) Disable(ctx context.Context, id uuid.UUID) (time.Time, error) {
+	tx, err := s.db.Begin(ctx)
 	if err != nil {
-		return fmt.Errorf("set user active: %w", err)
+		return time.Time{}, fmt.Errorf("begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	rows, err := tx.Query(ctx, `SELECT id FROM auth_svc.users WHERE role = 'admin' AND is_active ORDER BY id FOR UPDATE`)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("lock admins: %w", err)
+	}
+	admins, err := pgx.CollectRows(rows, pgx.RowTo[uuid.UUID])
+	if err != nil {
+		return time.Time{}, fmt.Errorf("lock admins: %w", err)
+	}
+	if len(admins) == 1 && admins[0] == id {
+		return time.Time{}, ErrLastAdmin
+	}
+
+	var at time.Time
+	err = tx.QueryRow(ctx, `
+		UPDATE auth_svc.users
+		SET is_active = FALSE, tokens_valid_after = now(), updated_at = now()
+		WHERE id = $1
+		RETURNING tokens_valid_after`, id).Scan(&at)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return time.Time{}, ErrNotFound
+	}
+	if err != nil {
+		return time.Time{}, fmt.Errorf("disable user: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return time.Time{}, fmt.Errorf("commit: %w", err)
+	}
+	return at, nil
+}
+
+// Enable turns the account back on. tokens_valid_after stays, so sessions
+// from before the disable keep being refused. ErrNotFound for an unknown id.
+func (s *PostgresStore) Enable(ctx context.Context, id uuid.UUID) error {
+	tag, err := s.db.Exec(ctx, `UPDATE auth_svc.users SET is_active = TRUE, updated_at = now() WHERE id = $1`, id)
+	if err != nil {
+		return fmt.Errorf("enable user: %w", err)
 	}
 	if tag.RowsAffected() == 0 {
 		return ErrNotFound

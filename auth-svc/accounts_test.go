@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strconv"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -78,11 +80,28 @@ func TestDisableUserEndsEverythingAtOnce(t *testing.T) {
 	}
 }
 
+// backdateDisable moves the user's last disable d into the past, in the
+// store and in the Redis marker, as if the wall clock had moved on.
+func (h *harness) backdateDisable(id uuid.UUID, d time.Duration) {
+	h.t.Helper()
+	h.store.mu.Lock()
+	u := h.store.users[id]
+	at := u.TokensValidAfter.Add(-d)
+	u.TokensValidAfter = &at
+	h.store.users[id] = u
+	h.store.mu.Unlock()
+	if h.mr.Exists(disabledKey(id)) {
+		if err := h.mr.Set(disabledKey(id), strconv.FormatInt(at.UnixMilli(), 10)); err != nil {
+			h.t.Fatal(err)
+		}
+	}
+}
+
 func TestEnableUserAfterDisable(t *testing.T) {
 	h := newHarness(t)
 	ctx := context.Background()
 	h.register("ada@example.com", "ada")
-	id, oldAccess, _ := h.loginUser("ada@example.com")
+	id, oldAccess, oldRefresh := h.loginUser("ada@example.com")
 
 	if err := DisableUser(ctx, h.store, h.jwt, h.redis, id); err != nil {
 		t.Fatalf("DisableUser: %v", err)
@@ -91,18 +110,114 @@ func TestEnableUserAfterDisable(t *testing.T) {
 		t.Fatalf("EnableUser: %v", err)
 	}
 
-	// A token from before the disable stays dead, even right after enabling.
+	// Tokens from before the disable stay dead after enabling.
 	if rec := h.do(http.MethodGet, "/api/auth/me", oldAccess, nil); rec.Code != http.StatusUnauthorized {
 		t.Errorf("pre-disable token: status %d, want 401", rec.Code)
 	}
-	// A fresh sign-in works at once: tokens carry milliseconds, so it is
-	// newer than the marker even within the same second.
+	if code := h.refreshStatus(oldRefresh); code != http.StatusUnauthorized {
+		t.Errorf("pre-disable refresh: status %d, want 401", code)
+	}
+
+	// Within DisableGrace even a new sign-in is refused: it cannot be told
+	// apart from one that raced the disable.
+	_, raceAccess, raceRefresh := h.loginUser("ada@example.com")
+	if rec := h.do(http.MethodGet, "/api/auth/me", raceAccess, nil); rec.Code != http.StatusUnauthorized {
+		t.Errorf("sign-in within the grace window: status %d, want 401", rec.Code)
+	}
+	if code := h.refreshStatus(raceRefresh); code != http.StatusUnauthorized {
+		t.Errorf("refresh of a session within the grace window: status %d, want 401", code)
+	}
+
+	// Once the window has passed, signing in works.
+	h.backdateDisable(id, DisableGrace+time.Second)
 	_, newAccess, newRefresh := h.loginUser("ada@example.com")
 	if rec := h.do(http.MethodGet, "/api/auth/me", newAccess, nil); rec.Code != http.StatusOK {
 		t.Errorf("new token: status %d, want 200 (body %s)", rec.Code, rec.Body)
 	}
 	if code := h.refreshStatus(newRefresh); code != http.StatusOK {
 		t.Errorf("new refresh: status %d, want 200", code)
+	}
+	// And the old tokens are still dead.
+	if code := h.refreshStatus(oldRefresh); code != http.StatusUnauthorized {
+		t.Errorf("old refresh after the window: status %d, want 401", code)
+	}
+}
+
+// A session Redis does not list for the user (one from before the per-user
+// set existed, or one a racing sign-in stored after the disable cleared the
+// set) must still end: refresh compares its start with tokens_valid_after.
+func TestDisableEndsUnlistedSessions(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+	h.register("ada@example.com", "ada")
+	id, _, listed := h.loginUser("ada@example.com")
+
+	// An old-style refresh token: no session-start claim, not in the set.
+	legacySID := "legacy-session"
+	legacy, jti, err := h.jwt.IssueRefresh(id, legacySID, time.Time{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := h.mr.Set(sessionKey(legacySID), jti); err != nil {
+		t.Fatal(err)
+	}
+
+	// Without a disable, an old-style token keeps working.
+	rec := h.do(http.MethodPost, "/api/auth/refresh", "", RefreshRequest{RefreshToken: legacy})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("legacy refresh before any disable: status %d (body %s)", rec.Code, rec.Body)
+	}
+	legacy = rec.Header().Get("X-Refresh-Token")
+	if _, err := h.mr.SRem(userSessionsKey(id), legacySID); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := DisableUser(ctx, h.store, h.jwt, h.redis, id); err != nil {
+		t.Fatalf("DisableUser: %v", err)
+	}
+	if !h.mr.Exists(sessionKey(legacySID)) {
+		t.Fatal("test setup: the unlisted session should survive the Redis cleanup")
+	}
+	if err := EnableUser(ctx, h.store, id); err != nil {
+		t.Fatal(err)
+	}
+	h.backdateDisable(id, DisableGrace+time.Second)
+
+	for name, tok := range map[string]string{"listed": listed, "unlisted": legacy} {
+		if code := h.refreshStatus(tok); code != http.StatusUnauthorized {
+			t.Errorf("%s session after disable and enable: status %d, want 401", name, code)
+		}
+	}
+	if h.mr.Exists(sessionKey(legacySID)) {
+		t.Error("refusing the unlisted session should also delete it")
+	}
+}
+
+func TestDisableLastAdmin(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+	h.register("root@example.com", "root")
+	h.register("ops@example.com", "ops")
+	h.store.setRole("root@example.com", RoleAdmin)
+	h.store.setRole("ops@example.com", RoleAdmin)
+	rootID, _, _ := h.loginUser("root@example.com")
+	opsID, _, _ := h.loginUser("ops@example.com")
+
+	if err := DisableUser(ctx, h.store, h.jwt, h.redis, opsID); err != nil {
+		t.Fatalf("disable one of two admins: %v", err)
+	}
+	if err := DisableUser(ctx, h.store, h.jwt, h.redis, rootID); !errors.Is(err, ErrLastAdmin) {
+		t.Fatalf("disable the last active admin: err = %v, want ErrLastAdmin", err)
+	}
+	if h.needsSetup() {
+		t.Error("needs_setup = true while an active admin exists")
+	}
+	// A disabled admin does not count: enabling ops makes root disable-able.
+	if err := EnableUser(ctx, h.store, opsID); err != nil {
+		t.Fatal(err)
+	}
+	if err := DisableUser(ctx, h.store, h.jwt, h.redis, rootID); err != nil {
+		t.Errorf("disable root with ops active again: %v", err)
 	}
 }
 

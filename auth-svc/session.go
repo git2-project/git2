@@ -27,8 +27,8 @@ const userSessionsKeyPrefix = "user-sess:"
 const revokedKeyPrefix = "revoked:"
 
 // disabledKeyPrefix holds, per disabled user, the moment of disabling in Unix
-// milliseconds. Access tokens issued at or before it are rejected. It lives
-// as long as an access token can, so it only covers tokens issued before.
+// milliseconds (database clock). Access tokens issued before it plus
+// DisableGrace are rejected. It lives as long as such a token can.
 const disabledKeyPrefix = "disabled:"
 
 func sessionKey(sid string) string            { return sessionKeyPrefix + sid }
@@ -154,7 +154,7 @@ func checkAccess(ctx context.Context, rdb *redis.Client, claims *authjwt.Claims)
 			slog.Warn("unreadable disabled marker", "user_id", claims.UserID, "value", v)
 			return userDisabled
 		}
-		if claims.IssuedAt == nil || claims.IssuedAt.UnixMilli() <= disabledAt {
+		if claims.IssuedAt == nil || claims.IssuedAt.UnixMilli() <= disabledAt+DisableGrace.Milliseconds() {
 			return userDisabled
 		}
 	}
