@@ -38,6 +38,7 @@ Every PR adds its lines under `## [Unreleased]`: one line per change, starting w
 
 ### Fixed
 - git2 core: per-IP rate limits see the client behind the gateway: `X-Real-IP` is used only on connections from `TRUSTED_PROXY_CIDRS` (`internal/realip`), never from anyone else (git2-deploy B-02)
+- auth-svc: usernames that are top-level web paths (`admin`, `api`, `sign-in` and ten more) are refused for every new account: sign-up, first-admin setup and admin-api
 - auth-svc: `password_hash` stored as `text`; email and username enforced lowercase
 - auth-svc: `GET /api/auth/me` answers 503 on a database fault instead of 404
 - docs: Requirements Specification, Git Core: a push's `repo.pushed` event is written right after Git updates the refs, not in the same transaction (FR-04, US-03, UC-11); repository name and default-branch rules (FR-25, UC-10); Git sign-in with the password until PATs arrive in W6 (FR-27 note)
