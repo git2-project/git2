@@ -26,8 +26,15 @@ Every user has exactly one instance role (`auth_svc.users.role`). Team roles liv
 Disabling is how accounts are removed: repositories, merge requests and audit entries keep pointing at the user. A disabled user's tokens must stop working **at once**:
 
 - all their refresh sessions are deleted (auth-svc keeps a per-user set of session ids for this);
-- `RequireAuth` rejects their access tokens through a short-lived Redis marker that lasts as long as an access token can live;
-- a Redis fault in that check still answers 5xx, never 401.
+- `RequireAuth` rejects their access tokens through a short-lived Redis marker that lasts as long as an access token can live.
+
+**A Redis fault in that check fails open**, the same way the revoked-token check (`isRevoked`) already does. Failing closed would turn a short Redis outage into 503s on every authenticated route of every service that mounts `RequireAuth`. The trade-off is small:
+
+- admin routes do not rely on the marker: their middleware reads the role and `is_active` from the database on every request, so a disabled user is locked out of the admin plane even while Redis is down;
+- refresh also reads `is_active` from the database, so no new access token is issued;
+- what is left: during a Redis outage a disabled user can keep using Dash with the access token they already hold, for at most its 15 minutes.
+
+A Redis fault never answers 401 either way: clients drop their tokens on a 401.
 
 ## Teams
 
