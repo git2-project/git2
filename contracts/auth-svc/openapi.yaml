@@ -193,7 +193,6 @@ paths:
     get:
       tags: [setup]
       operationId: setupStatus
-      x-status: draft
       summary: Whether the first admin still has to be created
       responses:
         '200':
@@ -207,12 +206,12 @@ paths:
     post:
       tags: [setup]
       operationId: setupAdmin
-      x-status: draft
       summary: Create the first admin with the one-time setup token
       description: |
         The setup token is printed once in the server log at startup (or set
-        with `GIT2_SETUP_TOKEN`). It works once; afterwards this endpoint
-        answers 409. Rate limit: 10 per minute per client IP.
+        with `GIT2_SETUP_TOKEN`, at least 32 characters). Every start without
+        an admin replaces it, so a lost token is fixed by a restart. It works
+        once; afterwards this endpoint answers 409. Rate limit: 10 per minute per client IP.
       requestBody:
         required: true
         content:

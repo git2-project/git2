@@ -48,9 +48,9 @@ Organizations (T-03) come in WBS-3.1 but are not in the contract yet. They decid
 
 A fresh install has no admin, and "the first account to register becomes admin" lets whoever reaches the server first take it over. git2 uses a **one-time setup token** instead:
 
-1. On startup, if no `admin` exists, auth-svc creates a random setup token, stores only its hash, and prints the token once in the log. `git2ctl install` can pass its own token through `GIT2_SETUP_TOKEN`, which is how scripted installs work.
+1. On startup, if no `admin` exists, auth-svc creates a random setup token, stores only its SHA-256 in `auth_svc.setup_token` (one row at most), and prints the token once in the log. Every start without an admin replaces it, so an operator who lost the log restarts. `git2ctl install` can pass its own token (at least 32 characters) through `GIT2_SETUP_TOKEN`, which is how scripted installs work.
 2. `GET /api/setup/status` tells the console whether setup is still needed.
-3. `POST /api/setup/admin` with the token creates the first `admin` and burns the token. The W6 setup wizard (WBS-11.1) is a UI over these two endpoints.
+3. `POST /api/setup/admin` with the token creates the first `admin` and burns the token, in one transaction that locks the token row, so two requests with the right token cannot both win. A wrong token answers 403, not 401. The W6 setup wizard (WBS-11.1) is a UI over these two endpoints.
 
 Self-registration (`POST /api/auth/register`) is **off by default** after setup. An admin creates accounts, or turns sign-up on in the instance settings (WBS-11.1). Until those settings exist, sign-up stays open in dev.
 

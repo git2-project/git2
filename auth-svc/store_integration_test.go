@@ -3,8 +3,11 @@ package authsvc
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/git2-project/git2/internal/database"
 	"github.com/google/uuid"
@@ -117,5 +120,129 @@ func TestRolesSeedMatchesCode(t *testing.T) {
 		if got[r] != scope {
 			t.Errorf("role %q: scope in db = %q, want %q", r, got[r], scope)
 		}
+	}
+}
+
+// TestPostgresSetup runs the first-admin flow against the real tables,
+// including many concurrent requests with the right token: the transaction
+// must let exactly one through. It skips on a database that already has an
+// admin, and removes what it created.
+func TestPostgresSetup(t *testing.T) {
+	dsn := os.Getenv("TEST_POSTGRES_DSN")
+	if dsn == "" {
+		t.Skip("TEST_POSTGRES_DSN not set")
+	}
+	ctx := context.Background()
+	db, err := database.NewPostgresPool(ctx, dsn, 10)
+	if err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	t.Cleanup(db.Close)
+	store := NewPostgresStore(db)
+
+	if exists, err := store.AdminExists(ctx); err != nil {
+		t.Fatalf("AdminExists: %v", err)
+	} else if exists {
+		t.Skip("database already has an admin")
+	}
+	suffix := uuid.NewString()[:8]
+	t.Cleanup(func() {
+		_, _ = db.Exec(ctx, `DELETE FROM auth_svc.users WHERE username LIKE $1`, "su-"+suffix+"-%")
+		_, _ = db.Exec(ctx, `DELETE FROM auth_svc.setup_token`)
+	})
+
+	token := "integration-setup-token-" + suffix + "-0123456789"
+	if tok, err := PrepareSetup(ctx, store, token); err != nil || tok != "" {
+		t.Fatalf("PrepareSetup = %q, %v", tok, err)
+	}
+	var stored string
+	if err := db.QueryRow(ctx, `SELECT token_sha256 FROM auth_svc.setup_token`).Scan(&stored); err != nil || stored != hashSetupToken(token) {
+		t.Fatalf("stored hash = %q, %v; want SHA-256 of the token", stored, err)
+	}
+
+	user := func(i int) User {
+		name := fmt.Sprintf("su-%s-%d", suffix, i)
+		return User{Email: name + "@example.com", Username: name, PasswordHash: "x", IsActive: true}
+	}
+	if _, err := store.CreateFirstAdmin(ctx, hashSetupToken("wrong"), user(0)); !errors.Is(err, ErrBadSetupToken) {
+		t.Errorf("wrong token err = %v, want ErrBadSetupToken", err)
+	}
+
+	const n = 8
+	errs := make([]error, n)
+	var wg sync.WaitGroup
+	for i := range n {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			_, errs[i] = store.CreateFirstAdmin(ctx, hashSetupToken(token), user(i+1))
+		}()
+	}
+	wg.Wait()
+	ok := 0
+	for _, err := range errs {
+		switch {
+		case err == nil:
+			ok++
+		case errors.Is(err, ErrSetupDone):
+		default:
+			t.Errorf("unexpected error: %v", err)
+		}
+	}
+	if ok != 1 {
+		t.Errorf("%d admins created, want exactly 1 (errors %v)", ok, errs)
+	}
+
+	var admins, tokens int
+	_ = db.QueryRow(ctx, `SELECT count(*) FROM auth_svc.users WHERE role = 'admin' AND username LIKE $1`, "su-"+suffix+"-%").Scan(&admins)
+	_ = db.QueryRow(ctx, `SELECT count(*) FROM auth_svc.setup_token`).Scan(&tokens)
+	if admins != 1 || tokens != 0 {
+		t.Errorf("admins = %d, setup tokens = %d; want 1 and 0", admins, tokens)
+	}
+	if put, err := store.PutSetupToken(ctx, hashSetupToken("again")); err != nil || put {
+		t.Errorf("PutSetupToken after setup = %v, %v; want false", put, err)
+	}
+
+	// The goroutines above rarely overlap in practice, so prove the lock
+	// directly: while another transaction holds the token row, a second
+	// CreateFirstAdmin must wait, and once that transaction has made an admin
+	// and burned the token, it must give up with ErrSetupDone.
+	if _, err := db.Exec(ctx, `DELETE FROM auth_svc.users WHERE username LIKE $1`, "su-"+suffix+"-%"); err != nil {
+		t.Fatalf("reset admins: %v", err)
+	}
+	if _, err := PrepareSetup(ctx, store, token); err != nil {
+		t.Fatalf("PrepareSetup again: %v", err)
+	}
+	holder, err := db.Begin(ctx)
+	if err != nil {
+		t.Fatalf("begin: %v", err)
+	}
+	defer func() { _ = holder.Rollback(ctx) }()
+	if _, err := holder.Exec(ctx, `SELECT 1 FROM auth_svc.setup_token WHERE singleton FOR UPDATE`); err != nil {
+		t.Fatalf("lock token row: %v", err)
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := store.CreateFirstAdmin(ctx, hashSetupToken(token), user(100))
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		t.Fatalf("CreateFirstAdmin did not wait for the locked token row (err %v)", err)
+	case <-time.After(300 * time.Millisecond):
+	}
+
+	if _, err := insertUser(ctx, holder, User{Email: "su-" + suffix + "-99@example.com", Username: "su-" + suffix + "-99", PasswordHash: "x", IsActive: true, Role: RoleAdmin}); err != nil {
+		t.Fatalf("holder: insert admin: %v", err)
+	}
+	if _, err := holder.Exec(ctx, `DELETE FROM auth_svc.setup_token`); err != nil {
+		t.Fatalf("holder: burn token: %v", err)
+	}
+	if err := holder.Commit(ctx); err != nil {
+		t.Fatalf("holder: commit: %v", err)
+	}
+	if err := <-done; !errors.Is(err, ErrSetupDone) {
+		t.Errorf("waiting CreateFirstAdmin err = %v, want ErrSetupDone", err)
 	}
 }

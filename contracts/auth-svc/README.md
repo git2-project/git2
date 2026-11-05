@@ -14,7 +14,7 @@
 |---|---|---|
 | Register, login, refresh, logout, me | Implemented; the spec matches the running service, except responses marked `x-status: draft` | Dash and Admin sign-in (WBS-2.2), now |
 | `role` on the user | Implemented | Admin access check, WBS-3.1, W2 |
-| First-admin setup (`/setup/status`, `/setup/admin`) | Draft (`x-status: draft`) | Setup wizard, WBS-11.1, W6 |
+| First-admin setup (`/setup/status`, `/setup/admin`) | Implemented | Setup wizard, WBS-11.1, W6 |
 
 ## Rules clients rely on
 

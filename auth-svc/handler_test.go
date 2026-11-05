@@ -28,6 +28,8 @@ type memStore struct {
 	fail error
 	// lookupDelay slows FindByID down, widening any race around it.
 	lookupDelay time.Duration
+	// setupHash is the stored setup token hash; "" means no row.
+	setupHash string
 }
 
 func newMemStore() *memStore { return &memStore{users: map[uuid.UUID]User{}} }
@@ -35,6 +37,10 @@ func newMemStore() *memStore { return &memStore{users: map[uuid.UUID]User{}} }
 func (s *memStore) Create(_ context.Context, u User) (User, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	return s.createLocked(u)
+}
+
+func (s *memStore) createLocked(u User) (User, error) {
 	for _, existing := range s.users {
 		if existing.Email == u.Email {
 			return User{}, ErrEmailExists
@@ -84,6 +90,63 @@ func (s *memStore) setFail(err error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.fail = err
+}
+
+func (s *memStore) adminExistsLocked() bool {
+	for _, u := range s.users {
+		if u.Role == RoleAdmin {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *memStore) AdminExists(context.Context) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.fail != nil {
+		return false, s.fail
+	}
+	return s.adminExistsLocked(), nil
+}
+
+func (s *memStore) PutSetupToken(_ context.Context, hash string) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.fail != nil {
+		return false, s.fail
+	}
+	if s.adminExistsLocked() {
+		return false, nil
+	}
+	s.setupHash = hash
+	return true, nil
+}
+
+// CreateFirstAdmin mirrors PostgresStore: the whole check-create-burn runs
+// under one lock, as the real one runs in one transaction.
+func (s *memStore) CreateFirstAdmin(_ context.Context, hash string, u User) (User, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.fail != nil {
+		return User{}, s.fail
+	}
+	switch {
+	case s.setupHash == "" && s.adminExistsLocked():
+		return User{}, ErrSetupDone
+	case s.setupHash == "" || s.setupHash != hash:
+		return User{}, ErrBadSetupToken
+	case s.adminExistsLocked():
+		s.setupHash = ""
+		return User{}, ErrSetupDone
+	}
+	u.Role = RoleAdmin
+	created, err := s.createLocked(u)
+	if err != nil {
+		return User{}, err
+	}
+	s.setupHash = ""
+	return created, nil
 }
 
 func (s *memStore) setRole(email string, role Role) {
@@ -142,6 +205,7 @@ func newHarness(t *testing.T) *harness {
 	jwtMgr := authjwt.NewManager("test-secret-that-is-at-least-32-chars", time.Minute, time.Hour)
 	h, err := NewHandler(Deps{
 		Users: store,
+		Setup: store,
 		JWT:   jwtMgr,
 		Redis: rdb,
 	})

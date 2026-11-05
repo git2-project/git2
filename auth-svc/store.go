@@ -38,6 +38,15 @@ func scanUser(row pgx.Row) (User, error) {
 }
 
 func (s *PostgresStore) Create(ctx context.Context, u User) (User, error) {
+	return insertUser(ctx, s.db, u)
+}
+
+// queryRower is a pool or a transaction.
+type queryRower interface {
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+}
+
+func insertUser(ctx context.Context, db queryRower, u User) (User, error) {
 	// v7 keeps ids time-ordered, so the primary key index doubles as a
 	// signup-order index.
 	id, err := uuid.NewV7()
@@ -51,7 +60,7 @@ func (s *PostgresStore) Create(ctx context.Context, u User) (User, error) {
 		INSERT INTO auth_svc.users (id, email, username, password_hash, is_active, role)
 		VALUES ($1, $2, $3, $4, $5, $6)
 		RETURNING ` + userColumns
-	created, err := scanUser(s.db.QueryRow(ctx, q, id, u.Email, u.Username, u.PasswordHash, u.IsActive, u.Role))
+	created, err := scanUser(db.QueryRow(ctx, q, id, u.Email, u.Username, u.PasswordHash, u.IsActive, u.Role))
 	if err != nil {
 		switch {
 		case isUniqueViolation(err, "users_email_key"):

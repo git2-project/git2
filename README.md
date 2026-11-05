@@ -72,6 +72,8 @@ Outside the devcontainer, `make deps` starts Redis from `docker-compose.dev.yml`
 | `POST` | `/api/auth/refresh` | `{refresh_token}` → new token pair in the same headers; a replayed old token ends the session |
 | `POST` | `/api/auth/logout` | bearer access token + optional `{refresh_token}`; revokes both, always `200` |
 | `GET` | `/api/auth/me` | bearer access token → current user |
+| `GET` | `/api/setup/status` | `{needs_setup}`: true until the first admin exists |
+| `POST` | `/api/setup/admin` | `{setup_token, email, username, password}` → `201` first admin; the token is printed once in the log at startup (or set with `GIT2_SETUP_TOKEN`) and works once |
 
 ## Contributing
 

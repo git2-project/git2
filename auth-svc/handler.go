@@ -19,6 +19,8 @@ import (
 
 type Deps struct {
 	Users UserStore
+	// Setup backs /api/setup. When nil, those routes are not mounted.
+	Setup SetupStore
 	JWT   *authjwt.Manager
 	Redis *redis.Client
 }
