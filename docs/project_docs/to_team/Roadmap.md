@@ -22,18 +22,20 @@ New in this roadmap:
 
 Status 28.10: CI is not assigned yet, and Supabase work waits until everyone has access to the project. `CHANGELOG.md` is in place.
 
+Status 05.11: Beste took the CI for this repo. A2, A3 and A10 are in `.github/workflows/` (`ci.yml`, `migrations.yml`, `changelog.yml`). A1 needs a repo admin; A4–A8 wait for Supabase access.
+
 | # | Task | Done when | Owner |
 |---|---|---|---|
 | A1 | Branch protection on `main` (GitHub settings) | PR required, 1 approving review, required checks `ci`, `migrations-check`, `changelog`; no force push; applies to admins too | repo admin |
-| A2 | `.github/workflows/ci.yml` (on PR and push to `main`) | `go vet`, `go build ./...`, `go test` green; a `postgres` service container sets `TEST_POSTGRES_DSN`, so the integration tests run in CI for the first time | CI owner (unassigned) |
-| A3 | `.github/workflows/migrations.yml`, job **`migrations-check`** (on PR to `main`) | Fails on: a name that is not `NNN_<service>_<what>.sql`, a missing `-- ` first line, a duplicate or skipped `NNN`, any modified, renamed or deleted file under `migrations/` that already exists on `main`. Then applies **all** migrations from scratch to a Postgres container on the same major version as Supabase | CI owner (unassigned) |
+| A2 | `.github/workflows/ci.yml` (on PR and push to `main`) | `go vet`, `go build ./...`, `go test` green; a `postgres` service container sets `TEST_POSTGRES_DSN`, so the integration tests run in CI for the first time | Beste (in review) |
+| A3 | `.github/workflows/migrations.yml`, job **`migrations-check`** (on PR to `main`) | Fails on: a name that is not `NNN_<service>_<what>.sql`, a missing `-- ` first line, a duplicate or skipped `NNN`, any modified, renamed or deleted file under `migrations/` that already exists on `main`. Then applies **all** migrations from scratch to a Postgres container on the same major version as Supabase | Beste (in review) |
 | A4 | Same workflow, job **`migrate`** (on push to `main` touching `migrations/**`, plus `workflow_dispatch`) | Runs in GitHub Environment `supabase-dev` with secret `SUPABASE_DB_URL`; `concurrency: supabase-dev-migrate` (no cancel), so two merges never race; writes the `--status` list to the job summary | deferred: Supabase access |
 | A5 | Move `helpers/dev/migrate.sh` → `helpers/ci/migrate.sh` | Reads only `DATABASE_URL` from the environment (no `.env`); takes `pg_advisory_lock` for the run; stores a sha256 per file in `schema_migrations` and fails if an applied file's checksum changed | CI owner (unassigned) |
 | A6 | Local workflow without Supabase | `make migrate` removed. `make show-migrations` stays (read-only). New `make migrate-scratch` applies migrations to a local Postgres in `docker-compose.dev.yml` and refuses any `*.supabase.co` / pooler host, so a migration can be tried before opening the PR | CI owner (unassigned) |
 | A7 | Reconcile `001_auth_users.sql` | `001` was changed after its first commit (1d51a22). Check `auth_svc.users` on Supabase against the file. If they differ, either add `002_auth_users_fix.sql` that brings the DB in line, or — since there is no real data yet — one recorded reset of `auth_svc` before v0.1.0. From then on `001` is frozen | deferred: Supabase access |
 | A8 | Separate DB roles *(recommended)* | `git2_migrator` owns the service schemas and lives only in the Action secret. `git2_app` gets DML only and is what everyone puts in `.env`. Rule 5 is then enforced by permissions, not by trust. Bootstrapped once in the Supabase SQL editor, with the script kept in `docs/ops/` | deferred: Supabase access |
 | A9 | Docs | README *Development* section, `CLAUDE.md` *Commands* and *Conventions*, `env.example` (DSN = `git2_app`), team map label `db/migrations` → `migrations/` | with A2–A6 |
-| A10 | `CHANGELOG.md` + `changelog` check | File seeded (section 2); the check fails a PR that does not touch it unless it has the `no-changelog` label (CI-only or typo PRs) | Beste (file done; check with CI owner) |
+| A10 | `CHANGELOG.md` + `changelog` check | File seeded (section 2); the check fails a PR that does not touch it unless it has the `no-changelog` label (CI-only or typo PRs) | Beste (file and check in review) |
 
 **Supabase connection from Actions:** use the **session pooler** connection string (port 5432 on the `pooler.supabase.com` host). GitHub-hosted runners have no IPv6 and the direct `db.<ref>.supabase.co` host is IPv6-only; the transaction pooler (6543) is a poor fit for DDL.
 
