@@ -11,12 +11,26 @@ info:
     shape of later work (merge requests W4, issues W5, pipelines W6) and will change.
 
     **Authentication.** Every operation needs `Authorization: Bearer <access token>` from
-    auth-svc (`POST /api/auth/login`).
+    auth-svc (`POST /api/auth/login`). The gateway checks the token (valid, not expired,
+    not revoked, user not disabled) and answers `401` itself; a request that passes reaches
+    dash-api with the caller's ID added by the gateway.
 
-    **Authorization.** git-svc and ci-svc trust their callers, so dash-api checks the
-    caller's access to the repository on every call. A repository the caller cannot read
-    answers `404`, never `403`, so its existence does not leak. `403` means the caller
-    can read the repository but not perform the action.
+    **Authorization.** The gateway does not know repository roles or visibility, and
+    git-svc and ci-svc trust their callers, so dash-api checks the caller's access to the
+    repository on every call. A repository the caller cannot read answers `404`, never
+    `403`, so its existence does not leak. `403` means the caller can read the repository
+    but not perform the action.
+
+    Repository access has three levels, `read`, `write` and `manage`; `manage` covers
+    settings and deletion. They are separate from the instance roles of identity v0: the
+    instance `admin` role does not grant repository access.
+
+    **Limits.** Every request times out after 30 seconds. Request bodies are at most 64 KiB.
+
+    **Faults.** A fault in dash-api or in a service behind it (git-svc, ci-svc, auth-svc,
+    the database) answers `5xx`, never `401`: clients sign out on a `401`. This includes an
+    authentication error between dash-api and those services, which is a server fault, not
+    the caller's. Every operation can answer `503`; `500` is an unexpected bug.
 
     **Errors** use the same body as auth-svc: `{"error": "message"}`.
 
@@ -83,6 +97,7 @@ paths:
                   next_page_token: { $ref: "#/components/schemas/NextPageToken" }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "503": { $ref: "#/components/responses/Unavailable" }
     post:
       tags: [Repositories]
       operationId: createRepository
@@ -106,6 +121,7 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
+        "503": { $ref: "#/components/responses/Unavailable" }
 
   /repos/{owner}/{repo}:
     parameters:
@@ -123,16 +139,20 @@ paths:
               schema: { $ref: "#/components/schemas/Repository" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
+        "503": { $ref: "#/components/responses/Unavailable" }
     delete:
       tags: [Repositories]
       operationId: deleteRepository
       summary: Delete a repository and its Git data
-      description: Needs admin access to the repository. Cannot be undone.
+      description: |
+        Needs `manage` access to the repository (see open question 3). The instance
+        `admin` role from identity v0 does not grant it. Cannot be undone.
       responses:
         "204": { description: Deleted. }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
+        "503": { $ref: "#/components/responses/Unavailable" }
 
   # --------------------------------------------------------------- Code browsing
   /repos/{owner}/{repo}/branches:
@@ -166,6 +186,7 @@ paths:
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
+        "503": { $ref: "#/components/responses/Unavailable" }
 
   /repos/{owner}/{repo}/tags:
     parameters:
@@ -194,6 +215,7 @@ paths:
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
+        "503": { $ref: "#/components/responses/Unavailable" }
 
   /repos/{owner}/{repo}/tree:
     parameters:
@@ -235,6 +257,7 @@ paths:
               schema: { $ref: "#/components/schemas/Error" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
+        "503": { $ref: "#/components/responses/Unavailable" }
 
   /repos/{owner}/{repo}/blob:
     parameters:
@@ -270,6 +293,7 @@ paths:
               schema: { $ref: "#/components/schemas/Error" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
+        "503": { $ref: "#/components/responses/Unavailable" }
 
   /repos/{owner}/{repo}/raw:
     parameters:
@@ -282,13 +306,34 @@ paths:
       description: |
         Needs the bearer header like every other operation, so a plain `<a href>` or
         `<img src>` cannot use it: Dash fetches the bytes and hands them to the browser as
-        a Blob URL. Another way to authorize downloads is open question 6.
+        a Blob URL. A signed download URL may come later (open question 6).
+
+        Files larger than 10 MiB answer `413`, so a download never runs into the 30-second
+        timeout and the Blob stays small; such files are fetched with `git clone`.
+
+        The response is always served as a download and can never run as a page on the
+        git2 origin:
+        - `Content-Disposition: attachment; filename="<name>"`
+        - `Content-Type: application/octet-stream`
+        - `X-Content-Type-Options: nosniff`
+        - `Content-Security-Policy: default-src 'none'; sandbox`
+        - `Cache-Control: private`
       parameters:
         - $ref: "#/components/parameters/Ref"
         - $ref: "#/components/parameters/FilePath"
       responses:
         "200":
-          description: The file's bytes. `Content-Disposition` carries the file name.
+          description: The file's bytes.
+          headers:
+            Content-Disposition:
+              description: Always `attachment`, with the file name.
+              schema: { type: string, example: 'attachment; filename="logo.png"' }
+            X-Content-Type-Options:
+              schema: { type: string, const: nosniff }
+            Content-Security-Policy:
+              schema: { type: string, const: "default-src 'none'; sandbox" }
+            Cache-Control:
+              schema: { type: string, const: private }
           content:
             application/octet-stream:
               schema: { type: string, contentMediaType: application/octet-stream }
@@ -304,6 +349,13 @@ paths:
               schema: { $ref: "#/components/schemas/Error" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
+        "413":
+          description: The file is larger than 10 MiB; fetch it with `git clone`.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              example: { error: "file is larger than 10 MiB; use git clone to get it" }
+        "503": { $ref: "#/components/responses/Unavailable" }
 
   /repos/{owner}/{repo}/commits:
     parameters:
@@ -337,6 +389,7 @@ paths:
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
+        "503": { $ref: "#/components/responses/Unavailable" }
 
   /repos/{owner}/{repo}/commits/{sha}:
     parameters:
@@ -364,6 +417,7 @@ paths:
               schema: { $ref: "#/components/schemas/Error" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
+        "503": { $ref: "#/components/responses/Unavailable" }
 
   # ------------------------------------------------------ Merge requests (draft)
   /repos/{owner}/{repo}/compare:
@@ -385,6 +439,7 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Diff" }
         "404": { $ref: "#/components/responses/NotFound" }
+        "503": { $ref: "#/components/responses/Unavailable" }
 
   /repos/{owner}/{repo}/merge-requests:
     parameters:
@@ -409,6 +464,7 @@ paths:
                 properties:
                   merge_requests: { type: array, items: { $ref: "#/components/schemas/MergeRequest" } }
                   next_page_token: { $ref: "#/components/schemas/NextPageToken" }
+        "503": { $ref: "#/components/responses/Unavailable" }
     post:
       tags: [Merge requests]
       operationId: createMergeRequest
@@ -432,6 +488,7 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/MergeRequest" }
+        "503": { $ref: "#/components/responses/Unavailable" }
 
   /repos/{owner}/{repo}/merge-requests/{number}:
     parameters:
@@ -450,6 +507,7 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/MergeRequest" }
         "404": { $ref: "#/components/responses/NotFound" }
+        "503": { $ref: "#/components/responses/Unavailable" }
 
   /repos/{owner}/{repo}/merge-requests/{number}/diff:
     parameters:
@@ -467,6 +525,7 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Diff" }
+        "503": { $ref: "#/components/responses/Unavailable" }
 
   /repos/{owner}/{repo}/merge-requests/{number}/comments:
     parameters:
@@ -487,6 +546,7 @@ paths:
                 type: object
                 properties:
                   comments: { type: array, items: { $ref: "#/components/schemas/ReviewComment" } }
+        "503": { $ref: "#/components/responses/Unavailable" }
     post:
       tags: [Merge requests]
       operationId: createMergeRequestComment
@@ -509,6 +569,7 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ReviewComment" }
+        "503": { $ref: "#/components/responses/Unavailable" }
 
   /repos/{owner}/{repo}/merge-requests/{number}/approvals:
     parameters:
@@ -522,6 +583,7 @@ paths:
       x-status: draft
       responses:
         "204": { description: Approved by the caller. }
+        "503": { $ref: "#/components/responses/Unavailable" }
     delete:
       tags: [Merge requests]
       operationId: unapproveMergeRequest
@@ -529,6 +591,7 @@ paths:
       x-status: draft
       responses:
         "204": { description: The caller's approval was withdrawn. }
+        "503": { $ref: "#/components/responses/Unavailable" }
 
   /repos/{owner}/{repo}/merge-requests/{number}/merge:
     parameters:
@@ -560,6 +623,7 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
+        "503": { $ref: "#/components/responses/Unavailable" }
 
   # -------------------------------------------------------------- Issues (draft)
   /repos/{owner}/{repo}/issues:
@@ -588,6 +652,7 @@ paths:
                 properties:
                   issues: { type: array, items: { $ref: "#/components/schemas/Issue" } }
                   next_page_token: { $ref: "#/components/schemas/NextPageToken" }
+        "503": { $ref: "#/components/responses/Unavailable" }
     post:
       tags: [Issues]
       operationId: createIssue
@@ -604,6 +669,7 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Issue" }
+        "503": { $ref: "#/components/responses/Unavailable" }
 
   /repos/{owner}/{repo}/issues/{number}:
     parameters:
@@ -621,6 +687,7 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Issue" }
+        "503": { $ref: "#/components/responses/Unavailable" }
     patch:
       tags: [Issues]
       operationId: updateIssue
@@ -638,6 +705,7 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Issue" }
+        "503": { $ref: "#/components/responses/Unavailable" }
 
   /repos/{owner}/{repo}/issues/{number}/comments:
     parameters:
@@ -658,6 +726,7 @@ paths:
                 type: object
                 properties:
                   comments: { type: array, items: { $ref: "#/components/schemas/Comment" } }
+        "503": { $ref: "#/components/responses/Unavailable" }
     post:
       tags: [Issues]
       operationId: createIssueComment
@@ -679,6 +748,7 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Comment" }
+        "503": { $ref: "#/components/responses/Unavailable" }
 
   /repos/{owner}/{repo}/labels:
     parameters:
@@ -698,6 +768,7 @@ paths:
                 type: object
                 properties:
                   labels: { type: array, items: { $ref: "#/components/schemas/Label" } }
+        "503": { $ref: "#/components/responses/Unavailable" }
 
   /repos/{owner}/{repo}/milestones:
     parameters:
@@ -717,6 +788,7 @@ paths:
                 type: object
                 properties:
                   milestones: { type: array, items: { $ref: "#/components/schemas/Milestone" } }
+        "503": { $ref: "#/components/responses/Unavailable" }
 
   /notifications:
     get:
@@ -738,6 +810,7 @@ paths:
                 properties:
                   notifications: { type: array, items: { $ref: "#/components/schemas/Notification" } }
                   next_page_token: { $ref: "#/components/schemas/NextPageToken" }
+        "503": { $ref: "#/components/responses/Unavailable" }
 
   /notifications/{id}/read:
     parameters:
@@ -749,6 +822,7 @@ paths:
       x-status: draft
       responses:
         "204": { description: Marked as read. }
+        "503": { $ref: "#/components/responses/Unavailable" }
 
   # ----------------------------------------------------------- Pipelines (draft)
   /repos/{owner}/{repo}/pipelines:
@@ -774,6 +848,7 @@ paths:
                 properties:
                   pipelines: { type: array, items: { $ref: "#/components/schemas/Pipeline" } }
                   next_page_token: { $ref: "#/components/schemas/NextPageToken" }
+        "503": { $ref: "#/components/responses/Unavailable" }
 
   /repos/{owner}/{repo}/pipelines/{id}:
     parameters:
@@ -791,6 +866,7 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Pipeline" }
+        "503": { $ref: "#/components/responses/Unavailable" }
 
   /repos/{owner}/{repo}/jobs/{id}/log:
     parameters:
@@ -806,6 +882,9 @@ paths:
         Server-sent events while the job runs (dash-api relays ci-svc's StreamJobLog).
         Each `data:` is a chunk of log text; the stream ends with `event: end` when the
         job finishes. `offset` resumes after a reconnect.
+
+        `EventSource` cannot send the bearer header, so Dash reads the stream with `fetch`
+        (a `ReadableStream`) and parses the events itself (open question 6).
       parameters:
         - { name: offset, in: query, schema: { type: integer, minimum: 0, default: 0 } }
       responses:
@@ -814,6 +893,7 @@ paths:
           content:
             text/event-stream:
               schema: { type: string }
+        "503": { $ref: "#/components/responses/Unavailable" }
 
   /repos/{owner}/{repo}/jobs/{id}/artifacts:
     parameters:
@@ -841,6 +921,7 @@ paths:
                         name: { type: string }
                         size: { type: integer }
                         download_url: { type: string }
+        "503": { $ref: "#/components/responses/Unavailable" }
 
 components:
   securitySchemes:
@@ -872,9 +953,10 @@ components:
       name: ref
       in: query
       description: |
-        Branch, tag or full 40-character commit SHA; a prefix is not accepted. Defaults to
-        the repository's default branch. Dash builds stable links from the full `commit_sha`
-        of each answer.
+        Branch, tag, `refs/heads/<name>`, `refs/tags/<name>` or full 40-character commit SHA;
+        a prefix is not accepted. When a branch and a tag share a name, the branch wins; use
+        `refs/tags/<name>` for the tag. Defaults to the repository's default branch. Dash
+        builds stable links from the full `commit_sha` of each answer.
       schema: { type: string, maxLength: 255 }
     DirPath:
       name: path
@@ -905,7 +987,9 @@ components:
           schema: { $ref: "#/components/schemas/Error" }
           example: { error: "name must not end with .git" }
     Unauthorized:
-      description: Missing, invalid or expired access token. Clients refresh once, then sign out.
+      description: |
+        Missing, invalid or expired access token of the caller. Clients refresh once, then
+        sign out. Never used for a fault behind dash-api (see `Unavailable`).
       content:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }
@@ -915,7 +999,16 @@ components:
       content:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }
-          example: { error: "admin access to the repository is required" }
+          example: { error: "manage access to the repository is required" }
+    Unavailable:
+      description: |
+        dash-api or a service behind it (git-svc, ci-svc, auth-svc, the database) failed or
+        is unreachable, or rejected dash-api's own credentials. Retry later; the caller's
+        tokens stay valid.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          example: { error: "git service unavailable" }
     NotFound:
       description: No such repository, ref or path, or the caller cannot read the repository.
       content:
@@ -961,7 +1054,7 @@ components:
       required: [id, username]
       properties:
         id: { type: string, format: uuid }
-        username: { type: string, example: ada }
+        username: { $ref: "#/components/schemas/OwnerName" }
 
     Repository:
       type: object
@@ -1099,7 +1192,10 @@ components:
       type: object
       required: [status, old_path, new_path, additions, deletions, binary, truncated]
       properties:
-        status: { type: string, enum: [added, modified, deleted, renamed, copied] }
+        status:
+          type: string
+          enum: [added, modified, deleted, renamed, copied]
+          description: Renames are detected (50% similarity); `copied` is reserved and not returned in v0.
         old_path: { type: [string, "null"] }
         new_path: { type: [string, "null"] }
         additions: { type: integer }

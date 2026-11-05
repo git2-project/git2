@@ -24,7 +24,8 @@ Draft operations fix the shape only; they still lack error responses (the 21 `op
 - **auth-svc** issues the bearer token and owns users; organizations come with WBS-3.1.
 - **git-svc** (`git.v1`, [git2-codeplane](https://github.com/git2-project/git2-codeplane)): see [`contracts/git/README.md`](../git/README.md) for the RPCs and the pinned version. Code browsing uses the read RPCs for refs, trees, blobs, commits and diffs (git2-project/git2-codeplane#8); merge requests need merge.
 - **ci-svc** (`ci.v1`, [git2-runner](https://github.com/git2-project/git2-runner)): `ListPipelines`, `GetPipeline`, `StreamJobLog`, `ListArtifacts`.
-- git-svc and ci-svc trust their callers, so **dash-api checks repository access on every call** (a repository the caller cannot read is a `404`).
+- **gateway** authenticates every `/api/*` request (token valid, not expired or revoked, user not disabled), answers `401` itself and forwards the caller's ID. It does no authorization.
+- The gateway, git-svc and ci-svc do not check repository access, so **dash-api checks it on every call** (a repository the caller cannot read is a `404`).
 
 ## Lint and mock
 
@@ -51,10 +52,10 @@ The Dash dev server then sends `/api/auth/*` to the Go server and every other `/
 
 1. **URL prefix and versioning**: `/api/repos` (like `/api/auth`) or `/api/v1/repos`?
 2. **Owners**: users and organizations share one namespace (`/repos/{owner}/{repo}`); organizations depend on WBS-3.1.
-3. **Repository permissions**: which service stores repository roles (read, write, admin) and team access: dash-api or admin-api?
+3. **Repository permissions**: which service stores repository access (`read`, `write`, `manage`) and team grants? Proposed by Identity (Beste): dash-api stores them in `dash_api`, since it checks access on every call, and asks auth-svc which teams a user is in (teams live in `auth_svc` since #18). `manage` is not the instance `admin` role.
 4. **Visibility**: `git.v1` has no private/internal/public field. Git core's view: it should not go into `git.v1`, because git-svc does no authorization. Decide it together with question 3; the gateway needs it too for clone and fetch.
 5. **Pipeline statuses**: take the final list from `ci.v1`.
-6. **Downloads**: `/raw` needs the bearer header, which a plain `<a>` or `<img>` cannot send. For now Dash fetches the bytes and opens them as a Blob URL; settle with Platform (Ceyda) whether downloads get another way to authorize (for example a short-lived signed URL).
+6. **Downloads**: `/raw` needs the bearer header, which a plain `<a>` or `<img>` cannot send. Agreed with Platform (Ceyda) for v0: Dash fetches the bytes and opens them as a Blob URL, files over 10 MiB answer `413`, and dash-api sets the download headers (`attachment`, `nosniff`, a `sandbox` CSP, `private` caching). The same applies to `streamJobLog`: `EventSource` cannot send the header either, so Dash reads the stream with `fetch`. Still open: a short-lived signed URL (`?exp=…&sig=…`) for large files and images, and whether the gateway or dash-api verifies it.
 
 ## Changing it
 
