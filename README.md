@@ -12,6 +12,7 @@ This is the core repo: the shared contracts and every control-plane service exce
 | Path | What it is |
 | :--- | :--- |
 | `contracts/` | OpenAPI specs for public APIs and gRPC protos shared between services |
+| `web/` | React apps for both planes, **Dash** for developers and **Admin** for IT, with a shared UI kit. See [`web/README.md`](web/README.md) |
 | `dash-api/` | Repos, code browsing, merge requests, review, issues, search |
 | `admin-api/` | Users, teams, instance settings, runner management, audit log |
 | `auth-svc/` | Sign-in for both planes, tokens, SSO and LDAP |
@@ -60,6 +61,8 @@ make migrate           # apply migrations/ to POSTGRES_DSN (make show-migrations
 make run               # Go API on :8080, Ctrl-C stops it
 make tests             # go test ./...
 ```
+
+For the web apps, run `cd web && pnpm install && pnpm dev` next to `make run` and open http://localhost:5173 (details in [`web/README.md`](web/README.md)).
 
 Outside the devcontainer, `make deps` starts Redis from `docker-compose.dev.yml` first. Set `TEST_POSTGRES_DSN` to a throwaway database to include the Postgres integration test in `make tests`.
 
