@@ -4,10 +4,10 @@ This directory holds no `.proto` files on purpose. The contract of backup-svc li
 
 | | |
 |---|---|
-| Source | [`proto/backup/v1/`](https://github.com/git2-project/git2-deploy/tree/main/proto/backup/v1) in git2-deploy |
-| Pinned version | `v0.1.0`, cut when the contract PR merges in git2-deploy |
+| Source | [`proto/backup/v1/`](https://github.com/git2-project/git2-deploy/tree/v0.1.0/proto/backup/v1) in git2-deploy |
+| Pinned version | `v0.1.0` |
 | Protobuf package | `backup.v1` |
-| Reference | [`docs/api/backup.md`](https://github.com/git2-project/git2-deploy/blob/main/docs/api/backup.md), [`docs/api/snapshot-format.md`](https://github.com/git2-project/git2-deploy/blob/main/docs/api/snapshot-format.md) |
+| Reference | [`docs/api/backup.md`](https://github.com/git2-project/git2-deploy/blob/v0.1.0/docs/api/backup.md), [`docs/api/snapshot-format.md`](https://github.com/git2-project/git2-deploy/blob/v0.1.0/docs/api/snapshot-format.md) |
 | Owner | Platform & Backup lane (Ceyda Akın) |
 
 ## What it contains

@@ -4,7 +4,7 @@ The gateway is the one HTTPS entry point of a git2 instance (WBS-1.2). It has no
 
 | | |
 |---|---|
-| Source | [`docs/api/gateway.md`](https://github.com/git2-project/git2-deploy/blob/main/docs/api/gateway.md) in git2-deploy |
+| Source | [`docs/api/gateway.md`](https://github.com/git2-project/git2-deploy/blob/v0.1.0/docs/api/gateway.md) in git2-deploy |
 | Version | v0 (pinned with git2-deploy `v0.1.0`) |
 | Owner | Platform & Backup lane (Ceyda Akın) |
 
