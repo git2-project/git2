@@ -64,6 +64,8 @@ make tests             # go test ./...
 
 For the web apps, run `cd web && pnpm install && pnpm dev` next to `make run` and open http://localhost:5173 (details in [`web/README.md`](web/README.md)).
 
+CI (`.github/workflows/`) runs on every pull request: `ci` (gofmt, vet, build, migrations applied to a throwaway Postgres, `go test -race`), `web` (typecheck, lint, test, build), `migrations-check` (`helpers/ci/check-migrations.sh`: names, numbering, first-line comments, no edits to existing files) and `changelog` (the PR touches `CHANGELOG.md`, or carries the `no-changelog` label).
+
 Outside the devcontainer, `make deps` starts Redis from `docker-compose.dev.yml` first. Set `TEST_POSTGRES_DSN` to a throwaway database to include the Postgres integration test in `make tests`.
 
 ### auth-svc API
