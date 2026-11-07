@@ -17,6 +17,7 @@ Every PR adds its lines under `## [Unreleased]`: one line per change, starting w
 - docs: README, project charter, project plan, team map, roadmap, this changelog
 
 ### Fixed
+- git2 core: per-IP rate limits see the client behind the gateway: `X-Real-IP` is used only on connections from `TRUSTED_PROXY_CIDRS` (`internal/realip`), never from anyone else (git2-deploy B-02)
 - auth-svc: `password_hash` stored as `text`; email and username enforced lowercase
 
 ### Database
