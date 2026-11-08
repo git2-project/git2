@@ -33,6 +33,7 @@ Every PR adds its lines under `## [Unreleased]`: one line per change, starting w
 - docs: README, project charter, project plan, team map, roadmap, this changelog
 - web: dash-api types generated from `contracts/dash-api/openapi.yaml` into `@git2/api` (`pnpm --filter @git2/api gen`); the `web` check fails when they are out of date
 - web: `@git2/api` client for dash-api repositories and code browsing (repositories, branches, tags, tree, blob, raw download, commits); `request()` takes an `AbortSignal`
+- dash: code browser (WBS-6.1): repository list, repository page with clone URL, branch and tag picker, directory tree with breadcrumb and last commit, file view highlighted with Shiki (binary, LFS, cut and empty files, download through `/raw`), commit history by ref and path, commit detail with its diff
 
 ### Changed
 - auth-svc: `RequireAuth` checks revocation and the disabled marker in one Redis round trip; it still fails open on a Redis fault
