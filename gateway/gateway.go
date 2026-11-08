@@ -33,6 +33,8 @@ type Deps struct {
 	WebDir     string
 	APITimeout time.Duration
 	Git        *GitDeps
+	// HSTS is true when the gateway terminates TLS itself.
+	HSTS bool
 }
 
 // New returns the gateway's handler.
@@ -47,6 +49,9 @@ func New(d Deps) (http.Handler, error) {
 
 	r := chi.NewRouter()
 	r.Use(middleware.Recoverer, withRequestID, withNoSniff, withCleanPath)
+	if d.HSTS {
+		r.Use(withHSTS)
+	}
 	if d.Git != nil {
 		if err := d.Git.validate(); err != nil {
 			return nil, err
