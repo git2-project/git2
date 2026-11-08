@@ -43,8 +43,8 @@ func ByIP(rdb *redis.Client, bucket string, limit int, window time.Duration) fun
 	}
 }
 
-// clientIP strips the port from RemoteAddr. The gateway in front of the
-// services is responsible for rewriting RemoteAddr from X-Forwarded-For.
+// clientIP strips the port from RemoteAddr. Behind the gateway,
+// internal/realip has already replaced RemoteAddr with the client's address.
 func clientIP(r *http.Request) string {
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
