@@ -16,6 +16,8 @@ Every PR adds its lines under `## [Unreleased]`: one line per change, starting w
 - internal: shared config, Postgres pool, Redis client, JWT (HS256), bcrypt, HTTP helpers and rate limiting
 - dev: devcontainer, `make run` / `tests` / `deps` / `build`, migration runner
 - gateway: one entry point (`cmd/gateway`): `/api` routed to git2 core after auth-svc's token check (`/api/auth/*` and `/api/setup/*` public), Dash and Admin served as static apps, client `X-Git2-*` / `X-Real-IP` / `X-Forwarded-*` headers replaced, `X-Request-Id`, `nosniff`, 30 s per API request (git2-deploy gateway contract v0.1)
+- gateway: Git over HTTPS: `/<owner>/<repo>.git/*` streamed to git-svc's Smart HTTP port by repository ID after an HTTP Basic sign-in, owner-only in v0, the password never forwarded; failed sign-ins limited per IP and per username; `GET /readyz` checks git2 core and git-svc (#24)
+- auth-svc: `PostgresStore.FindByUsername` and `Credentials.Check`, the username and password check the gateway uses for Git, with Login's rules (#24)
 - contracts: OpenAPI v0 for auth-svc (`contracts/auth-svc/`) and admin-api users, roles and teams (`contracts/admin-api/`)
 - contracts: OpenAPI v0 for dash-api (`contracts/dash-api/`): repositories and code browsing, drafts for merge requests, issues, notifications and pipelines (#17)
 - contracts: references to the `backup.v1` contract and the gateway contract v0.1, both kept in git2-deploy (`contracts/backup/`, `contracts/gateway/`) (#19)

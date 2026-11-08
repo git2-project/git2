@@ -65,6 +65,12 @@ func (s *PostgresStore) FindByEmail(ctx context.Context, email string) (User, er
 	return s.findOne(ctx, `SELECT `+userColumns+` FROM auth_svc.users WHERE email = $1`, email)
 }
 
+// FindByUsername takes a lowercase username, the form usernames are stored
+// in (users_username_lower).
+func (s *PostgresStore) FindByUsername(ctx context.Context, username string) (User, error) {
+	return s.findOne(ctx, `SELECT `+userColumns+` FROM auth_svc.users WHERE username = $1`, username)
+}
+
 func (s *PostgresStore) FindByID(ctx context.Context, id uuid.UUID) (User, error) {
 	return s.findOne(ctx, `SELECT `+userColumns+` FROM auth_svc.users WHERE id = $1`, id)
 }
