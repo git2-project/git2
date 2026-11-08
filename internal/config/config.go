@@ -5,10 +5,12 @@ package config
 
 import (
 	"fmt"
+	"net/netip"
 	"os"
 	"strconv"
 	"time"
 
+	"github.com/git2-project/git2/internal/realip"
 	"github.com/joho/godotenv"
 )
 
@@ -28,6 +30,10 @@ type Config struct {
 	JWTSecret          string
 	AccessTokenExpiry  time.Duration
 	RefreshTokenExpiry time.Duration
+
+	// TrustedProxies are the addresses whose X-Real-IP is believed: the
+	// gateway (TRUSTED_PROXY_CIDRS). Empty means none.
+	TrustedProxies []netip.Prefix
 }
 
 func Load() (*Config, error) {
@@ -53,6 +59,10 @@ func Load() (*Config, error) {
 	}
 	if cfg.RefreshTokenExpiry, err = time.ParseDuration(getenv("REFRESH_TOKEN_EXPIRY", "720h")); err != nil {
 		return nil, fmt.Errorf("REFRESH_TOKEN_EXPIRY: %w", err)
+	}
+
+	if cfg.TrustedProxies, err = realip.ParsePrefixes(os.Getenv("TRUSTED_PROXY_CIDRS")); err != nil {
+		return nil, fmt.Errorf("TRUSTED_PROXY_CIDRS: %w", err)
 	}
 
 	if maxConns < 1 || maxConns > 1000 {
