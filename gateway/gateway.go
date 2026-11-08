@@ -1,5 +1,6 @@
 // Package gateway is git2's one entry point: it routes /api to git2 core
-// after checking the access token, and serves the Dash and Admin web apps.
+// after checking the access token, Git over HTTPS to git-svc after a
+// password sign-in, and serves the Dash and Admin web apps.
 // The contract is docs/api/gateway.md in git2-deploy; why it is its own
 // process is git2-deploy ADR 0004.
 package gateway
@@ -23,12 +24,15 @@ import (
 const APITimeout = 30 * time.Second
 
 // Deps is what the gateway needs. APITimeout is a field so tests can shorten it.
+// Git is required in production (cmd/gateway); tests of the other routes
+// leave it nil, which turns the Git route off.
 type Deps struct {
 	JWT        *authjwt.Manager
 	Redis      *redis.Client
 	Core       *url.URL
 	WebDir     string
 	APITimeout time.Duration
+	Git        *GitDeps
 }
 
 // New returns the gateway's handler.
@@ -43,10 +47,23 @@ func New(d Deps) (http.Handler, error) {
 
 	r := chi.NewRouter()
 	r.Use(middleware.Recoverer, withRequestID, withNoSniff, withCleanPath)
+	if d.Git != nil {
+		if err := d.Git.validate(); err != nil {
+			return nil, err
+		}
+		// First, as in the contract's route table: a path whose second
+		// segment ends in .git is never an API or web path.
+		r.Use(withGitRoute(newGitHandler(*d.Git)))
+	}
 
 	r.Get("/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		httpx.JSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
+	upstreams := map[string]*url.URL{"git2": d.Core}
+	if d.Git != nil {
+		upstreams["git-svc"] = d.Git.GitSvc
+	}
+	r.Method(http.MethodGet, "/readyz", readyz(upstreams))
 
 	// Public API: sign-in and first-admin setup check their own credentials.
 	r.Handle("/api/auth/*", api)
