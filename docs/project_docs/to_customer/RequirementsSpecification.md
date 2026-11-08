@@ -10,8 +10,22 @@
 | **Group name / number** | feastLabs |
 | **Group members** | Osman Yahya Akıncı — 150230106, Abdullah Akcan — 150220051, Bilge Bostanbaşı — 150230081, Ceyda Akın — 150220096, Zarif Beste Süner — 150220085 |
 | **Instructor** | Tolga Ovatman, Ayşe Tosun Kühn |
-| **Submission date** | 2026-11-02 |
+| **Submission date** | 2026-11-08 |
 | **Document version** | 1.0 |
+
+---
+
+## Changelog
+
+Changes to the Project Plan v1.0 (19.10.2026) that this document records. They go through the change control of WBS-18.2; scope, deliverables, tasks and the schedule are unchanged.
+
+| # | Project Plan v1.0 | Changed to | Reason | Where in this document |
+|---|---|---|---|---|
+| 1 | §1.4 Security: passwords are hashed with Argon2id. | auth-svc hashes passwords with bcrypt. NFR-02 is written so that it holds for either algorithm; the final choice is recorded in the Software Design Report. | auth-svc, already merged, was built with bcrypt. | NFR-02; non-functional requirement notes |
+| 2 | WBS-1.3: events are written in the same PostgreSQL transaction as the data. | Still true for data kept in PostgreSQL, such as creating and deleting a repository. A push changes refs on disk, so its `repo.pushed` event is written right after Git updates the refs. An event is never written for a push that did not happen, and a push whose event could not be written is logged. | Git keeps refs on disk, not in PostgreSQL, so a push and its event cannot share a transaction (git2-codeplane ADR 0012). | FR-04; functional requirement notes |
+| 3 | WBS-3.2: revoked tokens stop working immediately. | Still true for PATs. During a Redis outage, a revoked access token, or one whose user was disabled, keeps working until it expires, at most one access-token lifetime (15 minutes). This is recorded as an OWASP ASVS exception. | Revocation markers live in Redis; failing closed would sign every user out during a Redis fault. | FR-12; NFR-09; notes "Redis faults and tokens" and "ASVS exception" |
+| 4 | WBS-5.2 (W2–W3) brings Git over HTTPS and WBS-3.2 (W6) brings personal access tokens; the Plan does not say how Git clients sign in before W6. | Until PATs arrive, including at the M1 demo, Git over HTTPS signs in with the account's username and password. PATs replace passwords for Git in W6. | Git over HTTPS (WBS-5.2, W2–W3) is ready before PATs (WBS-3.2, W6). | FR-27; functional requirement notes |
+| 5 | Cover page: Abdullah Akcan's student ID was printed as 15022051. | 150220051, corrected in the Project Plan on 08.11.2026. | Typo. | Cover page |
 
 ---
 
@@ -30,6 +44,7 @@ The Requirement Analysis Report (23.11.2026) will refine these requirements. The
 
 **Structure of this document:**
 
+- The **Changelog** before this section lists the changes to the Project Plan v1.0 that this document records.
 - **Section 2.1** lists functional requirements FR-01–FR-100, grouped by Project Plan task T-01–T-17, each with a priority and an acceptance condition.
 - **Section 2.2** lists non-functional requirements NFR-01–NFR-35: security, performance, usability, reliability, portability, maintainability and design constraints.
 - **Section 3.1** describes the nine user types and external actors (UT-01–UT-09) and how their permissions differ.
@@ -178,7 +193,7 @@ The requirements are grouped by Project Plan task. Each one is linked to the tas
 
 - **Task coverage.** Every Project Plan task T-01–T-17 has at least one requirement above. T-18 (project management and project documentation) adds no system behavior, so it has no functional requirement. Its course reports and demo are covered by D-09 and by this document itself (WBS-18.4).
 - **Roles.** This document assumes three repository and organization roles: **Read**, **Write** and **Maintain**. It also assumes an instance-wide **administrator** flag on accounts. The Charter and the Plan require role-based permissions but do not name roles, so these names and the permission table in Section 3.1 are this document's proposal, to be confirmed in the Requirement Analysis Report. A role given on an organization applies to all of its repositories.
-- **Numbering.** FR-97 and FR-98 were added after the first numbering. They are listed under T-06, the task they belong to, and keep their numbers so that references to them stay stable.
+- **Numbering.** FR-97, FR-98, FR-99 and FR-100 were added after the first numbering. They are listed under the task they belong to and keep their numbers so that references to them stay stable: FR-97 and FR-98 under T-06, FR-99 after FR-07 under T-01, and FR-100 after FR-74 under T-12.
 - **Repository list (FR-97).** The first version lists the repositories of one owner at a time. A single list across all owners, newest first, is left to the Requirement Analysis Report, because it depends on how repository access and team grants are stored.
 - **Ownership and scope of objects.** A repository is owned by a user or by an organization. A merge request is always between two branches of the same repository, because forks are not in the agreed scope.
 - **Optional scope.** FR-29, FR-33 and FR-63 are the Project Plan's optional activities, WBS-5.3, WBS-6.2 and WBS-10.6. The `search_code` tool of git2-mcp (FR-88) depends on FR-33: if WBS-6.2 is dropped, `search_code` returns a "not available" tool error instead of results.
@@ -1500,7 +1515,7 @@ Every development task from Project Plan §1.3 is covered. The optional items (F
 - **E3 — Not permitted (occurs at step 4):** The service answers 403 (FR-16).
 - **E4 — Invalid request body (occurs at step 5):** The service answers 400 when the body has unknown fields or trailing data or is larger than 64 KiB.
 - **E5 — Database or Redis fault (occurs at step 4 or 5):** The service answers 5xx, never 401, so the client keeps its token (NFR-22).
-- **E6: Service unreachable or too slow (occurs at step 3):** The gateway answers 503 when the service cannot be reached and 504 when it does not answer in time.
+- **E6 — Service unreachable or too slow (occurs at step 3):** The gateway answers 503 when the service cannot be reached and 504 when it does not answer in time.
 
 **Post-condition(s):**  
 - Every request is either answered as the OpenAPI specification describes or refused with a documented status.
@@ -2191,7 +2206,7 @@ Every development task from Project Plan §1.3 is covered. The optional items (F
 - **A2 — Local disk destination (branches from step 2):**
   1. The operator chose a local directory in `git2.yaml` instead of a bucket.
   2. Step 6 uses that directory.
-- **A3: Delete a snapshot (branches from step 1):**
+- **A3 — Delete a snapshot (branches from step 1):**
   1. The administrator deletes a snapshot from the backup list.
   2. The system removes it from the destination and writes an audit entry (FR-100, FR-68).
 

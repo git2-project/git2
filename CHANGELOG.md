@@ -26,6 +26,7 @@ Every PR adds its lines under `## [Unreleased]`: one line per change, starting w
 - docs: Platform and Backup requirements in the Requirements Specification: gateway header trust, Git route and client IP (FR-02, FR-03, FR-05, FR-99), container hardening (NFR-35), backup settings from `git2.yaml`, retention and snapshot deletion (FR-65, FR-76, FR-100) (#23)
 - docs: identity v0 design (roles, teams, first-admin setup) in `docs/design/identity-v0.md`
 - docs: README, project charter, project plan, team map, roadmap, this changelog
+- docs: Changelog section in the Requirements Specification: the changes to the Project Plan v1.0 it records (bcrypt, push events, token revocation during a Redis fault, Git sign-in before PATs, a student ID typo); submission date set to 2026-11-08
 
 ### Fixed
 - git2 core: per-IP rate limits see the client behind the gateway: `X-Real-IP` is used only on connections from `TRUSTED_PROXY_CIDRS` (`internal/realip`), never from anyone else (git2-deploy B-02)
