@@ -1,0 +1,37 @@
+# Every PR adds its lines to CHANGELOG.md (Roadmap A10, CLAUDE.md). A CI-only
+# or typo PR can opt out with the `no-changelog` label; the job is then
+# skipped, which counts as passing for a required check.
+#
+# Its own workflow, so adding or removing the label re-runs only this check,
+# not the whole build.
+name: changelog
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+permissions:
+  contents: read
+
+jobs:
+  changelog:
+    name: changelog
+    if: ${{ !contains(github.event.pull_request.labels.*.name, 'no-changelog') }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      # The checkout is the PR merged onto the current base: HEAD^1 is that
+      # base, HEAD^2 the PR head. Comparing with HEAD^1 counts only this PR's
+      # changes, even when the base moved after the event was created.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: CHANGELOG.md is part of this PR
+        run: |
+          if git diff --name-only HEAD^1 HEAD | grep -qx CHANGELOG.md; then
+            echo "CHANGELOG.md updated"
+          else
+            echo "::error file=CHANGELOG.md::add this PR's lines under ## [Unreleased], or set the no-changelog label for CI-only or typo PRs"
+            exit 1
+          fi

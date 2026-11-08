@@ -51,6 +51,12 @@ func TestPostgresStore(t *testing.T) {
 	if got, err := store.FindByEmail(ctx, email); err != nil || got.ID != created.ID {
 		t.Errorf("FindByEmail = %v, %v", got.ID, err)
 	}
+	if got, err := store.FindByUsername(ctx, username); err != nil || got.ID != created.ID {
+		t.Errorf("FindByUsername = %v, %v", got.ID, err)
+	}
+	if _, err := store.FindByUsername(ctx, "missing-"+suffix); !errors.Is(err, ErrNotFound) {
+		t.Errorf("FindByUsername(missing) err = %v, want ErrNotFound", err)
+	}
 	if got, err := store.FindByID(ctx, created.ID); err != nil || got.Email != email {
 		t.Errorf("FindByID = %v, %v", got.Email, err)
 	}

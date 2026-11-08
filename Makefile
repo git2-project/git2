@@ -31,6 +31,7 @@ migrate:
 show-migrations:
 	@bash helpers/dev/migrate.sh --status
 
-## Build the git2 binary.
+## Build the git2 and gateway binaries.
 build:
 	go build -o bin/git2 ./cmd/git2
+	go build -o bin/gateway ./cmd/gateway
