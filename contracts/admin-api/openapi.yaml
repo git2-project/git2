@@ -3,9 +3,8 @@ info:
   title: git2 admin-api
   version: 0.1.0-draft
   description: |
-    The admin plane for WBS-3.1: users, roles and teams. The user operations
-    are implemented; operations marked `x-status: draft` are not, and their
-    shape may still change. Design notes: docs/design/identity-v0.md.
+    The admin plane for WBS-3.1: users, roles and teams. Every operation is
+    implemented. Design notes: docs/design/identity-v0.md.
 
     Every operation needs the `admin` instance role (Requirements
     Specification FR-08, UT-03). The role is read from the database on every request, so a change takes
@@ -31,7 +30,6 @@ paths:
     get:
       tags: [roles]
       operationId: listRoles
-      x-status: draft
       summary: The fixed list of roles
       responses:
         '200':
@@ -151,7 +149,6 @@ paths:
     get:
       tags: [teams]
       operationId: listTeams
-      x-status: draft
       summary: List teams, oldest first
       parameters:
         - name: q
@@ -173,7 +170,6 @@ paths:
     post:
       tags: [teams]
       operationId: createTeam
-      x-status: draft
       summary: Create a team
       requestBody:
         required: true
@@ -198,7 +194,6 @@ paths:
     get:
       tags: [teams]
       operationId: getTeam
-      x-status: draft
       summary: One team
       responses:
         '200':
@@ -213,7 +208,6 @@ paths:
     patch:
       tags: [teams]
       operationId: updateTeam
-      x-status: draft
       summary: Rename a team or change its description
       requestBody:
         required: true
@@ -235,7 +229,6 @@ paths:
     delete:
       tags: [teams]
       operationId: deleteTeam
-      x-status: draft
       summary: Delete a team and its memberships
       responses:
         '204':
@@ -251,7 +244,6 @@ paths:
     get:
       tags: [teams]
       operationId: listTeamMembers
-      x-status: draft
       summary: Members of a team
       parameters:
         - $ref: '#/components/parameters/PageSize'
@@ -275,7 +267,6 @@ paths:
     put:
       tags: [teams]
       operationId: putTeamMember
-      x-status: draft
       summary: Add a member or change their team role
       description: Idempotent. 201 when the user was added, 200 when an existing membership changed or stayed the same.
       requestBody:
@@ -302,7 +293,6 @@ paths:
     delete:
       tags: [teams]
       operationId: deleteTeamMember
-      x-status: draft
       summary: Remove a member
       responses:
         '204':

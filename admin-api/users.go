@@ -1,11 +1,7 @@
-// Package adminapi is git2's admin plane API (contracts/admin-api). Every
-// route needs the admin instance role; the accounts themselves live in
-// auth-svc, which owns the auth_svc schema.
 package adminapi
 
 import (
 	"context"
-	"encoding/base64"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -14,10 +10,7 @@ import (
 
 	authsvc "github.com/git2-project/git2/auth-svc"
 	"github.com/git2-project/git2/internal/httpx"
-	authjwt "github.com/git2-project/git2/internal/jwt"
-	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
-	"github.com/redis/go-redis/v9"
 )
 
 // UserStore is what the user routes need from auth-svc. authsvc.PostgresStore
@@ -29,37 +22,6 @@ type UserStore interface {
 	ListUsers(ctx context.Context, f authsvc.UserFilter) ([]authsvc.User, error)
 	UpdateUser(ctx context.Context, id uuid.UUID, u authsvc.UserUpdate) (authsvc.User, error)
 	UserTeams(ctx context.Context, userID uuid.UUID) ([]authsvc.UserTeam, error)
-}
-
-type Deps struct {
-	Users UserStore
-	JWT   *authjwt.Manager
-	Redis *redis.Client
-}
-
-type Handler struct {
-	deps Deps
-}
-
-func NewHandler(deps Deps) *Handler { return &Handler{deps: deps} }
-
-const (
-	defaultPageSize = 50
-	maxPageSize     = 100
-)
-
-// Mount registers every /admin/* route on r.
-func (h *Handler) Mount(r chi.Router) {
-	read := authsvc.RequirePermission(h.deps.Users, authsvc.PermAdminRead)
-	write := authsvc.RequirePermission(h.deps.Users, authsvc.PermAdminWrite)
-
-	r.Route("/admin", func(r chi.Router) {
-		r.Use(authsvc.RequireAuth(h.deps.JWT, h.deps.Redis))
-		r.With(read).Get("/users", h.ListUsers)
-		r.With(write).Post("/users", h.CreateUser)
-		r.With(read).Get("/users/{user_id}", h.GetUser)
-		r.With(write).Patch("/users/{user_id}", h.UpdateUser)
-	})
 }
 
 // AdminUser is the contract's AdminUser.
@@ -117,7 +79,8 @@ type UpdateUserRequest struct {
 
 func (h *Handler) ListUsers(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
-	f := authsvc.UserFilter{Prefix: q.Get("q"), Limit: defaultPageSize}
+	f := authsvc.UserFilter{Prefix: q.Get("q")}
+	var ok bool
 	if len(f.Prefix) > 254 {
 		httpx.Error(w, http.StatusBadRequest, "q is too long")
 		return
@@ -138,13 +101,8 @@ func (h *Handler) ListUsers(w http.ResponseWriter, r *http.Request) {
 		}
 		f.Active = &active
 	}
-	if v := q.Get("page_size"); v != "" {
-		n, err := strconv.Atoi(v)
-		if err != nil || n < 1 || n > maxPageSize {
-			httpx.Error(w, http.StatusBadRequest, "page_size must be between 1 and 100")
-			return
-		}
-		f.Limit = n
+	if f.Limit, ok = pageSize(w, r); !ok {
+		return
 	}
 	if v := q.Get("page_token"); v != "" {
 		after, err := decodePageToken(v)
@@ -218,7 +176,7 @@ func (h *Handler) CreateUser(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) GetUser(w http.ResponseWriter, r *http.Request) {
-	id, ok := userIDParam(w, r)
+	id, ok := pathID(w, r, "user_id", "user not found")
 	if !ok {
 		return
 	}
@@ -243,7 +201,7 @@ func (h *Handler) GetUser(w http.ResponseWriter, r *http.Request) {
 // The steps are not one transaction: if disabling fails after the email or
 // role changed, the answer is an error and repeating the request is safe.
 func (h *Handler) UpdateUser(w http.ResponseWriter, r *http.Request) {
-	id, ok := userIDParam(w, r)
+	id, ok := pathID(w, r, "user_id", "user not found")
 	if !ok {
 		return
 	}
@@ -347,26 +305,4 @@ func (h *Handler) findUser(w http.ResponseWriter, r *http.Request, id uuid.UUID)
 		return authsvc.User{}, false
 	}
 	return u, true
-}
-
-func userIDParam(w http.ResponseWriter, r *http.Request) (uuid.UUID, bool) {
-	id, err := uuid.Parse(chi.URLParam(r, "user_id"))
-	if err != nil {
-		// Not a uuid, so no such user.
-		httpx.Error(w, http.StatusNotFound, "user not found")
-		return uuid.Nil, false
-	}
-	return id, true
-}
-
-// A page token is the id of the last user on the previous page. It is opaque
-// to clients, so the encoding can change.
-func encodePageToken(id uuid.UUID) string { return base64.RawURLEncoding.EncodeToString(id[:]) }
-
-func decodePageToken(s string) (uuid.UUID, error) {
-	b, err := base64.RawURLEncoding.DecodeString(s)
-	if err != nil {
-		return uuid.Nil, err
-	}
-	return uuid.FromBytes(b)
 }

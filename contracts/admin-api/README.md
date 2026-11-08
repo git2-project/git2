@@ -13,7 +13,7 @@
 | Group | State | Needed by |
 |---|---|---|
 | Users: list, create, get, update, enable and disable | Implemented (`admin-api/users.go`) | Admin console, WBS-3.1, W3 |
-| Roles, teams, team members | Draft (`x-status: draft`) | Admin console, WBS-3.1, W3–W4 |
+| Roles, teams, team members | Implemented (`admin-api/teams.go`) | Admin console, WBS-3.1, W3 |
 | Organizations | Not written yet | dash-api owners (`/repos/{owner}/...`), WBS-3.1 |
 
 ## Rules

@@ -91,7 +91,7 @@ func run(ctx context.Context, cfg *config.Config) error {
 	if err != nil {
 		return err
 	}
-	admin := adminapi.NewHandler(adminapi.Deps{Users: store, JWT: jwtMgr, Redis: rdb})
+	admin := adminapi.NewHandler(adminapi.Deps{Users: store, Teams: store, JWT: jwtMgr, Redis: rdb})
 
 	r := chi.NewRouter()
 	// realip first, so the logger and the rate limits see the client, not the gateway.
