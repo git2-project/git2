@@ -15,10 +15,19 @@ Read `README.md` (layout, commands, auth API) and `docs/Charter.md` (scope, owne
 - JWTs are HS256 only with `exp` required (`jwt.WithValidMethods`, `jwt.WithExpirationRequired`).
 - A database or Redis fault answers 5xx, never 401: clients drop their tokens on a 401.
 - Other services protect routes with `authsvc.RequireAuth(jwt, redis)` and read the caller with `authsvc.UserID(ctx)`.
+- Every PR adds its lines to `CHANGELOG.md` under `## [Unreleased]` (Keep a Changelog groups, plus `Database` for each new migration file).
 - Tests: Redis-dependent code is tested against miniredis; Postgres code has `*_integration_test.go` files that skip unless `TEST_POSTGRES_DSN` is set.
+
+## Web (`web/`)
+- pnpm workspace: `apps/dash`, `apps/admin` (base `/admin/`), `packages/ui` (shared UI kit), `packages/api` (API client). Shared versions live in the `catalog:` of `web/pnpm-workspace.yaml`; React and react-router must stay a single copy.
+- All API calls go through `request()` in `packages/api`; never call `fetch` for `/api` directly. Only a 401 clears the tokens.
+- Open both apps through the Dash dev server (:5173) so they share one origin and one session.
+- Commands (in `web/`): `pnpm dev` · `pnpm test` · `pnpm typecheck` · `pnpm lint` · `pnpm build`
 
 ## Docs lookup
 Context7 is configured for the repo in `.mcp.json`. Check library APIs (chi, pgx, go-redis, golang-jwt) there before relying on memory.
 
 ## Commands
 `make run` · `make tests` · `make migrate` · `make show-migrations` · `make deps` · `make build`
+
+Before opening a PR that adds a migration: `helpers/ci/check-migrations.sh origin/dev/main` (the same check CI runs).
