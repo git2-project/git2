@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -331,5 +332,64 @@ func TestReadyzNeedsA200(t *testing.T) {
 	readyz(map[string]*url.URL{"git2": u}).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/readyz", nil))
 	if rec.Code != http.StatusServiceUnavailable {
 		t.Fatalf("status %d, want 503", rec.Code)
+	}
+}
+
+// A guesser who hangs up while the password is being checked still uses up
+// one of its failures: the count must not ride on the request's context.
+func TestGitFailureCountsWhenTheClientHangsUp(t *testing.T) {
+	g := newGitFixture(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	req := httptest.NewRequest(http.MethodGet, refsPath, nil).WithContext(ctx)
+	req.RemoteAddr = "203.0.113.7:51234"
+	req.SetBasicAuth("deniz", "wrong")
+	g.h.ServeHTTP(httptest.NewRecorder(), req)
+
+	got, err := g.mr.Get("rl:git-signin-fail:ip:203.0.113.7")
+	if err != nil || got != "1" {
+		t.Fatalf("failures counted for the IP = %q (%v), want 1", got, err)
+	}
+}
+
+func TestGitServicesTakeOnlyTheirMethod(t *testing.T) {
+	g := newGitFixture(t)
+	refused := map[string]string{
+		"/deniz/api.git/info/refs?service=git-upload-pack": http.MethodPost,
+		"/deniz/api.git/git-upload-pack":                   http.MethodGet,
+		"/deniz/api.git/git-receive-pack":                  http.MethodPut,
+	}
+	for p, m := range refused {
+		if rec := g.do(t, m, p, basic("deniz", gitPassword)); rec.Code != http.StatusMethodNotAllowed {
+			t.Errorf("%s %s: status %d, want 405", m, p, rec.Code)
+		}
+	}
+	if n := len(g.gitSvc.calls()); n != 0 {
+		t.Fatalf("git-svc got %d requests with the wrong method", n)
+	}
+	if rec := g.do(t, http.MethodPost, "/deniz/api.git/git-receive-pack", basic("deniz", gitPassword)); rec.Code != http.StatusOK {
+		t.Fatalf("POST git-receive-pack: status %d, want 200", rec.Code)
+	}
+}
+
+// Guesses spread over many IPs still hit the per-username limit.
+func TestGitFailedSignInsAreLimitedPerUsername(t *testing.T) {
+	g := newGitFixture(t)
+	try := func(ip, user, pass string) int {
+		req := httptest.NewRequest(http.MethodGet, refsPath, nil)
+		req.RemoteAddr = ip + ":40000"
+		req.SetBasicAuth(user, pass)
+		rec := httptest.NewRecorder()
+		g.h.ServeHTTP(rec, req)
+		return rec.Code
+	}
+	for i := 0; i < signInFailsUser; i++ {
+		ip := "198.51.100." + strconv.Itoa(i%(signInFailsPerIP-1)+1) // never an IP's limit
+		if c := try(ip, "Deniz", "wrong"); c != http.StatusUnauthorized {
+			t.Fatalf("failure %d: status %d, want 401", i+1, c)
+		}
+	}
+	if c := try("192.0.2.1", "deniz", gitPassword); c != http.StatusTooManyRequests {
+		t.Fatalf("after %d failures for the username: status %d, want 429", signInFailsUser, c)
 	}
 }

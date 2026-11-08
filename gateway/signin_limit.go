@@ -26,6 +26,8 @@ const (
 	// comes from the client; auth-svc's are at most 39 characters, so a
 	// longer one never signs in and its tail does not need its own counter.
 	maxUsernameKey = 64
+	// countTimeout bounds writing one failure, which outlives the request.
+	countTimeout = 2 * time.Second
 )
 
 // SignInLimiter counts failed sign-ins in Redis. Like the other limits it
@@ -67,8 +69,12 @@ func (l *SignInLimiter) Blocked(ctx context.Context, ip, username string) (time.
 }
 
 // Failed counts one failed sign-in for ip and username. The window starts at
-// the first failure.
+// the first failure. The count does not use the request's context: a guesser
+// who hangs up during the password check would otherwise cancel it and
+// guess for free.
 func (l *SignInLimiter) Failed(ctx context.Context, ip, username string) {
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), countTimeout)
+	defer cancel()
 	ipKey, userKey := l.keys(ip, username)
 	pipe := l.rdb.TxPipeline()
 	for _, k := range []string{ipKey, userKey} {

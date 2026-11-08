@@ -26,13 +26,13 @@ const headerUserID = "X-Git2-User-Id"
 // gitChallenge is sent with every 401 so the Git client asks for credentials.
 const gitChallenge = `Basic realm="git2"`
 
-// gitServices are the Smart HTTP paths after /<repo>.git/ (gitprotocol-http).
-// Anything else under a .git path is a 404: dumb HTTP and file reads are
-// not served.
-var gitServices = map[string]bool{
-	"info/refs":        true,
-	"git-upload-pack":  true,
-	"git-receive-pack": true,
+// gitServices are the Smart HTTP paths after /<repo>.git/ and the one method
+// each takes (gitprotocol-http). Anything else under a .git path is a 404:
+// dumb HTTP and file reads are not served.
+var gitServices = map[string]string{
+	"info/refs":        http.MethodGet,
+	"git-upload-pack":  http.MethodPost,
+	"git-receive-pack": http.MethodPost,
 }
 
 // errRepoNotFound means the owner has no repository with that name.
@@ -115,8 +115,14 @@ func newGitHandler(d GitDeps) *gitHandler {
 
 func (h *gitHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	gp, _ := parseGitPath(r.URL.Path)
-	if !gitServices[gp.service] {
+	method, ok := gitServices[gp.service]
+	if !ok {
 		gitError(w, http.StatusNotFound, "not found")
+		return
+	}
+	if r.Method != method {
+		w.Header().Set("Allow", method)
+		gitError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
 	user, ok := h.signIn(w, r)
