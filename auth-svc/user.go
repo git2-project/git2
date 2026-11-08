@@ -23,7 +23,7 @@ type User struct {
 	Username     string
 	PasswordHash string
 	IsActive     bool
-	// Role is the user's instance role (admin, auditor or user).
+	// Role is the user's instance role (admin or user).
 	Role Role
 	// TokensValidAfter is set when the user was disabled; sessions that
 	// began before it are refused. Nil if never disabled.

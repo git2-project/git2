@@ -17,8 +17,6 @@ func TestCan(t *testing.T) {
 	}{
 		{RoleAdmin, PermAdminRead, true},
 		{RoleAdmin, PermAdminWrite, true},
-		{RoleAuditor, PermAdminRead, true},
-		{RoleAuditor, PermAdminWrite, false},
 		{RoleUser, PermAdminRead, false},
 		{RoleUser, PermAdminWrite, false},
 		// Team roles grant nothing at instance level, and an unknown role
@@ -89,7 +87,6 @@ func TestRequirePermission(t *testing.T) {
 		wantWrite int
 	}{
 		{"user", RoleUser, http.StatusForbidden, http.StatusForbidden},
-		{"auditor", RoleAuditor, http.StatusNoContent, http.StatusForbidden},
 		{"admin", RoleAdmin, http.StatusNoContent, http.StatusNoContent},
 		// The same access token, demoted again: the role is read from the
 		// store on every request, so the change applies at once.

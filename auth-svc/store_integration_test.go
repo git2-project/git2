@@ -184,7 +184,7 @@ func TestRolesSeedMatchesCode(t *testing.T) {
 	}
 
 	want := map[Role]string{
-		RoleAdmin: "instance", RoleAuditor: "instance", RoleUser: "instance",
+		RoleAdmin: "instance", RoleUser: "instance",
 		RoleMaintainer: "team", RoleMember: "team",
 	}
 	if len(got) != len(want) {

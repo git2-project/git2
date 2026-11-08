@@ -17,7 +17,7 @@
 
 ## Rules
 
-- Reads need the `admin` or `auditor` instance role, writes need `admin`. The role is read from the database on every request, so a change takes effect at once.
+- Every operation needs the `admin` instance role (Requirements Specification FR-08, UT-03). The role is read from the database on every request, so a change takes effect at once.
 - Users are disabled, never deleted. Disabling ends their sessions at once.
 - The last active admin cannot be demoted or disabled.
 - Paging, errors and the bearer token work as in `contracts/dash-api/`.

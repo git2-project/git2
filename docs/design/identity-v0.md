@@ -12,7 +12,6 @@ Roles are a **fixed list shipped with git2**, not something an admin defines at 
 | Role | Scope | Can |
 |---|---|---|
 | `admin` | instance | everything in the admin plane |
-| `auditor` | instance | read-only admin plane: users, teams, settings, audit log |
 | `user` | instance | the Dash plane; the default for new accounts |
 | `maintainer` | team | rename the team, add and remove members |
 | `member` | team | belong to the team; repository access comes through it |

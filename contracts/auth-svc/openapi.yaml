@@ -330,7 +330,7 @@ components:
 
     InstanceRole:
       type: string
-      enum: [admin, auditor, user]
+      enum: [admin, user]
 
     User:
       type: object

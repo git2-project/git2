@@ -17,7 +17,6 @@ CREATE TABLE IF NOT EXISTS auth_svc.roles (
 
 INSERT INTO auth_svc.roles (name, scope, description) VALUES
     ('admin',      'instance', 'Everything in the admin plane'),
-    ('auditor',    'instance', 'Read-only admin plane: users, teams, settings, audit log'),
     ('user',       'instance', 'The Dash plane; the default for new accounts'),
     ('maintainer', 'team',     'Rename the team, add and remove members'),
     ('member',     'team',     'Belongs to the team; repository access comes through it')

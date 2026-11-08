@@ -6,9 +6,8 @@ type Role string
 
 // Instance roles: every user has exactly one, in auth_svc.users.role.
 const (
-	RoleAdmin   Role = "admin"
-	RoleAuditor Role = "auditor"
-	RoleUser    Role = "user"
+	RoleAdmin Role = "admin"
+	RoleUser  Role = "user"
 )
 
 // Team roles: one per membership, in auth_svc.team_members.role.
@@ -36,8 +35,7 @@ const (
 // RoleUser has no entry: signing in to Dash needs no permission, only
 // RequireAuth.
 var instancePermissions = map[Role][]Permission{
-	RoleAdmin:   {PermAdminRead, PermAdminWrite},
-	RoleAuditor: {PermAdminRead},
+	RoleAdmin: {PermAdminRead, PermAdminWrite},
 }
 
 // teamPermissions is the same table for team roles. RoleMember has no entry:

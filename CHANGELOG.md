@@ -9,7 +9,7 @@ Every PR adds its lines under `## [Unreleased]`: one line per change, starting w
 ### Added
 - auth-svc: `POST /api/auth/register`, `/login`, `/refresh`, `/logout` and `GET /api/auth/me`; tokens in `X-Access-Token` / `X-Refresh-Token` headers, refresh sessions rotated in Redis, per-IP rate limits on the public routes
 - auth-svc: `RequireAuth` middleware and `UserID(ctx)` for other services
-- auth-svc: instance role on every user (`admin`, `auditor`, `user`; new accounts get `user`), returned as `role` by register, login and `/me`
+- auth-svc: instance role on every user (`admin`, `user`; new accounts get `user`), returned as `role` by register, login and `/me`
 - auth-svc: role → permission table (`roles.go`) and `RequirePermission` middleware for admin routes; the role is read from the database on every request
 - auth-svc: `DisableUser` / `EnableUser` for admin-api: disabling ends every session of the user and makes `RequireAuth` reject their access tokens at once (`users.tokens_valid_after`, the refresh token's `sat` claim, a per-user session set and a `disabled:<uid>` marker in Redis); the last active admin cannot be disabled
 - auth-svc: first-admin setup: `GET /api/setup/status` and `POST /api/setup/admin` with a one-time setup token, printed once at startup or set with `GIT2_SETUP_TOKEN`, valid for one hour; a wrong token answers 403, a request after setup 409
@@ -29,5 +29,5 @@ Every PR adds its lines under `## [Unreleased]`: one line per change, starting w
 
 ### Database
 - `001_auth_users.sql`: `auth_svc` schema and `auth_svc.users`
-- `004_auth_roles_teams.sql`: `auth_svc.roles` (fixed list: admin, auditor, user, maintainer, member), `users.role` (default `user`), `auth_svc.teams`, `auth_svc.team_members`
+- `004_auth_roles_teams.sql`: `auth_svc.roles` (fixed list: admin, user, maintainer, member), `users.role` (default `user`), `auth_svc.teams`, `auth_svc.team_members`
 - `005_auth_setup_token.sql`: `auth_svc.setup_token`, the hash of the one-time first-admin setup token
