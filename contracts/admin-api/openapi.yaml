@@ -3,9 +3,9 @@ info:
   title: git2 admin-api
   version: 0.1.0-draft
   description: |
-    The admin plane for WBS-3.1: users, roles and teams. Every operation is
-    `x-status: draft`: not implemented yet, and the shape may still change.
-    Design notes: docs/design/identity-v0.md.
+    The admin plane for WBS-3.1: users, roles and teams. The user operations
+    are implemented; operations marked `x-status: draft` are not, and their
+    shape may still change. Design notes: docs/design/identity-v0.md.
 
     Every operation needs the `admin` instance role (Requirements
     Specification FR-08, UT-03). The role is read from the database on every request, so a change takes
@@ -53,7 +53,6 @@ paths:
     get:
       tags: [users]
       operationId: listUsers
-      x-status: draft
       summary: List users, oldest first
       parameters:
         - name: q
@@ -81,7 +80,6 @@ paths:
     post:
       tags: [users]
       operationId: createUser
-      x-status: draft
       summary: Create an account
       requestBody:
         required: true
@@ -106,7 +104,6 @@ paths:
     get:
       tags: [users]
       operationId: getUser
-      x-status: draft
       summary: One user with their teams
       responses:
         '200':
@@ -121,7 +118,6 @@ paths:
     patch:
       tags: [users]
       operationId: updateUser
-      x-status: draft
       summary: Change role or email, enable or disable
       description: |
         Setting `is_active` to false ends every session of the user and
