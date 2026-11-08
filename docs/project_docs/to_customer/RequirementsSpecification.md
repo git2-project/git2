@@ -76,7 +76,7 @@ The requirements are grouped by Project Plan task. Each one is linked to the tas
 | FR-01 | T-01 | D-01 | The system shall expose every function used by the web apps, the git2 CLI and git2-mcp through a REST API under `/api`, described by one OpenAPI 3 specification kept in `contracts/`. | Must | Contract tests in CI compare every endpoint's requests and responses with the OpenAPI spec (D-01 acceptance). Mock servers are generated from the spec (WBS-1.1). |
 | FR-02 | T-01 | D-01 | The system shall provide one HTTPS entry point (the gateway). It terminates TLS, routes each `/api` request to the service that owns it, and serves the Dash and Admin web applications as static files. | Must | Both UIs and all APIs are reachable through one HTTPS endpoint on the integration instance (WBS-1.2, M0 demo). |
 | FR-03 | T-01, T-02 | D-01 | The gateway shall reject, with HTTP 401 and before the request reaches a service, any API request that has no valid access token or PAT. Only these endpoints are exempt: sign-in, session refresh and sign-out, first-run setup (while no administrator exists), and health checks. | Must | An automated test calls every endpoint four ways: without a token, and with an expired, a revoked and a tampered token. It expects 401 each time. The exempt list is checked against the OpenAPI spec. |
-| FR-04 | T-01 | D-01 | When a push changes a repository, the system shall write a `repo.pushed` event in the same PostgreSQL transaction as the push metadata and deliver it to the subscribing services at least once. A consumer shall recognise a repeated delivery by its event ID and process it only once. | Must | Outbox unit tests show three things. The event row exists only if the push is committed. The relay redelivers after a crash between sending and acknowledging. A duplicated event causes no second effect (WBS-1.3). |
+| FR-04 | T-01 | D-01 | When a push changes one or more refs of a repository, the system shall write one `repo.pushed` event that lists every changed ref, and deliver it to the subscribing services at least once. A consumer shall recognise a repeated delivery by its event ID and process it only once. Events about data kept in PostgreSQL, such as a repository's creation and deletion, are written in the same transaction as that data. A push changes refs on disk, so its event is written right after Git updates the refs: an event is never written for a push that did not happen, and a push whose event could not be written is logged. | Must | Outbox and integration tests show four things. A push that changes refs writes exactly one event with all of its ref updates. A push that is rejected, or changes no ref, writes none. The relay redelivers after a crash between sending and acknowledging. A duplicated event causes no second effect (WBS-1.3). |
 | FR-05 | T-01 | D-01 | The gateway shall limit requests in a time window per signed-in user, or per client IP address for unauthenticated requests. Requests above the limit get HTTP 429 with a `Retry-After` header. | Must | A test sends requests above the configured limit and expects 429 with `Retry-After`. Requests from another user or IP are not affected (WBS-1.4). |
 | FR-06 | T-01 | D-01 | The system shall cache frequently read API data in Redis with an expiry time. A repeated read within the expiry is served without a PostgreSQL query. | Must | A test shows that a second identical read is served from the cache and that the entry disappears after its expiry (WBS-1.4). |
 | FR-07 | T-01, T-11 | D-01 | Each service shall offer a health-check endpoint that needs no authentication. It reports whether the service is running and whether its PostgreSQL and Redis connections work. | Must | The health endpoints answer without a token. Stopping PostgreSQL or Redis turns the matching field to unhealthy at the next check. FR-69 and `git2ctl` use these endpoints. |
@@ -97,7 +97,7 @@ The requirements are grouped by Project Plan task. Each one is linked to the tas
 | FR-22 | T-04 | D-01, D-02, D-03 | When an OIDC provider is configured, the sign-in page shall offer sign-in through it. After a successful OIDC sign-in, the system signs the user in. On the first sign-in it creates a git2 account, or links the identity to an existing account with the same verified email address. | Must | Integration test with Keycloak. The first sign-in creates the account and a second sign-in reuses it. An existing local account with the same email is linked (WBS-4.1). |
 | FR-23 | T-04 | D-01, D-03 | The system shall let an instance administrator configure an LDAP directory and test the connection. The settings are the server URL, the bind account, and the user and group search bases. Users can then sign in with their LDAP username and password. | Must | Integration test with the OpenLDAP container: a seeded user signs in and a wrong password is refused (WBS-4.2). |
 | FR-24 | T-04 | D-01, D-03 | The system shall map LDAP groups to git2 teams chosen by the administrator. At each LDAP sign-in, it adds the user to, or removes the user from, the mapped teams to match the user's current LDAP groups. | Must | Integration test: moving a seeded user between LDAP groups changes their git2 team membership at the next sign-in (WBS-4.2). |
-| FR-25 | T-05 | D-01, D-02 | The system shall let a user create a repository owned by their own account, or by an organization where they have the Maintain role. The user gives a name, an optional description and a default branch name. Repository names are unique per owner, ignoring letter case. | Must | API and UI tests create repositories. Creating `Api` next to `api` under the same owner is refused (WBS-5.1). |
+| FR-25 | T-05 | D-01, D-02 | The system shall let a user create a repository owned by their own account, or by an organization where they have the Maintain role. The user gives a name, an optional description and an optional default branch name, which is `main` if left empty. A name has 1–100 characters from letters, digits, `.`, `_` and `-`, does not start with `.` or `-`, and does not end with `.git`. Repository names are unique per owner, ignoring letter case. | Must | API and UI tests create repositories. Creating `Api` next to `api` under the same owner is refused, and so are names that break the rules, such as `.hidden`, `app.git` or a name of 101 characters (WBS-5.1). |
 | FR-26 | T-05 | D-01, D-02 | The system shall let a user with the Maintain role delete a repository after typing its name to confirm. A deleted repository is no longer listed or reachable over Git, and its name can be reused at once. | Must | A test deletes a repository, checks that a clone fails, and creates a new repository with the same name (WBS-5.1). |
 | FR-27 | T-05, T-03 | D-01 | The system shall let a standard `git` client clone, fetch and push a repository over HTTPS (the Git Smart HTTP protocol). The client authenticates with the username and a PAT. | Must | Integration tests run the real `git` CLI for clone, fetch, and push of new commits, branches and tags (WBS-5.2, M1 demo). |
 | FR-28 | T-05 | D-01 | The system shall allow clone and fetch only to users with at least the Read role on the repository, and push only to users with at least the Write role. A refusal is shown in the `git` client's error output. | Must | Integration tests with users of each role. The FR-16 matrix includes Git operations. |
@@ -188,10 +188,12 @@ The requirements are grouped by Project Plan task. Each one is linked to the tas
   - A database or Redis fault is answered with 5xx, never with 401 (NFR-22).
 - **Sources beyond the Charter and the Plan.** Some details come from the team's merged artifacts:
   - FR-09–FR-13 describe the auth-svc API that already runs. The development build also has an unauthenticated `POST /api/auth/register` endpoint, used only to create test accounts during development. It is removed from release builds, as FR-20 requires, and is therefore not in the FR-03 exempt list.
-  - FR-25's naming rule comes from the git-svc schema (`migrations/002_git_repositories.sql`).
+  - FR-25's case-insensitive uniqueness comes from the git-svc schema (`migrations/002_git_repositories.sql`), and its name and default-branch rules from the `git.v1` contract (`contracts/git/`).
   - FR-54's label matching, FR-61's failure reasons and FR-62's CI secrets come from the `ci.v1` contract and the ci-svc schema (`migrations/003_ci_pipelines.sql`).
 - **Values not fixed here.** This document sets no access-token or refresh-token lifetimes, rate-limit sizes, registration-token expiry, job time limits or backup retention. These are configuration values. Their defaults are set in the Software Design Report.
 - **Git LFS.** LFS file locking is left out on purpose, following risk R-13. LFS objects are part of the repository data, so they are included in snapshots (FR-70).
+- **Push events (FR-04).** Git keeps a repository's refs on disk, not in PostgreSQL, so a push and its event cannot share a transaction. git-svc writes the event right after Git updates the refs. If git-svc stops or loses its database in between, the push stays without an event, and git-svc logs the loss. `repo.pushed` is the Project Plan's name; the `git.v1` contract calls the event `RepositoryPushed`. This follows git2-codeplane ADR 0012, which is still under review in git2-codeplane#5.
+- **Git sign-in before PATs (FR-27).** PATs arrive with WBS-3.2 in W6. Until then, including at the M1 demo, Git clients sign in with the account's username and password, as proposed in the gateway contract v0.1 (git2-deploy#13).
 
 ### 2.2 Non-functional Requirements
 
@@ -388,7 +390,7 @@ Each user-facing WBS activity has a user story (`US-##`). Internal and project-m
 |---|---|---|---|
 | SC-13 | WBS-1.1 | **US-01** — As the developer of a git2 client (a script, the git2 CLI or git2-mcp), I want every public endpoint described in one OpenAPI 3 contract so that I can generate a client and rely on the API's shape. | FR-01 |
 | SC-01 | WBS-1.2 | **US-02** — As a user, I want Dash, Admin and the API behind one HTTPS address so that I need only one URL and my traffic is always encrypted. | FR-02, FR-03 |
-| SC-04 | WBS-1.3 | **US-03** — As a developer, I want every push to start its pipeline exactly once, even if a service restarts during the push, so that no commit goes unbuilt. | FR-04, FR-51 |
+| SC-04 | WBS-1.3 | **US-03** — As a developer, I want every push to start its pipeline exactly once, even if its event is delivered twice or a service restarts while delivering it, so that no commit is built twice or skipped. | FR-04, FR-51 |
 | SC-13 | WBS-1.4 | **US-04** — As an administrator, I want per-user and per-IP request limits and cached hot reads so that one runaway script cannot slow git2 down for everyone. | FR-05, FR-06 |
 | SC-03 | WBS-2.1 | **US-05** — As a developer, I want to sign in once and stay signed in safely so that I do not retype my password, and a stolen refresh token cannot be reused. | FR-09–FR-13 |
 | SC-01 | WBS-2.2 | **US-06** — As an administrator who also writes code, I want one sign-in page for Dash and Admin so that one sign-in covers both planes. | FR-08, FR-11 |
@@ -1532,7 +1534,7 @@ Every development task from Project Plan §1.3 is covered. The optional items (F
 **Exception / error flows (if applicable):**
 
 - **E1 — Name already used by this owner (occurs at step 4):** The system shows "name already exists" and creates nothing.
-- **E2 — Invalid name (occurs at step 4):** The name contains characters that are not allowed. The system shows the rule and creates nothing.
+- **E2 — Invalid name (occurs at step 4):** The name breaks the rules of FR-25, for example it contains characters that are not allowed or ends with `.git`. The system shows the rule and creates nothing.
 - **E3 — No permission (occurs at step 4 or A1.3):** The system answers 403 and changes nothing (FR-16).
 
 **Post-condition(s):**  
@@ -1562,7 +1564,7 @@ Every development task from Project Plan §1.3 is covered. The optional items (F
 3. **System:** Verifies the token and the Read role, then serves the repository over the Git Smart HTTP protocol (FR-27, FR-28).
 4. **Developer:** Commits locally and runs `git push`.
 5. **System:** Verifies the Write role and the branch protection rules, receives the objects and updates the refs (FR-28, FR-35).
-6. **System:** Records the push and a `repo.pushed` event in the same transaction (FR-04). The `git` client reports success.
+6. **System:** Right after the refs are updated, records one `repo.pushed` event that lists every ref the push changed (FR-04). The `git` client reports success.
 
 **Alternative flows:**
 
@@ -1583,10 +1585,11 @@ Every development task from Project Plan §1.3 is covered. The optional items (F
 - **E2 — Missing role (occurs at step 3 or 5):** The system refuses the operation, and `git` shows the error (FR-28).
 - **E3 — Protected branch (occurs at step 5):** The push, force-push or branch deletion is not allowed by the branch's rules. The system rejects it with a message that `git` prints, and leaves the refs unchanged (FR-35).
 - **E4 — Interrupted push (occurs at step 5):** The connection drops before the refs are updated. No ref changes and no event is recorded.
+- **E5 — The system stops right after the refs are updated (occurs at step 6):** The push stays, because Git has already updated the refs, but no event is recorded and no pipeline starts for it. The system logs the lost event (FR-04).
 
 **Post-condition(s):**  
 - After a clone, the developer has a complete copy of the repository.
-- After a push, the refs are updated and exactly one `repo.pushed` event is recorded and delivered at least once.
+- After a push that changed refs, the refs are updated and exactly one `repo.pushed` event lists them, unless E5 occurred. A recorded event is delivered at least once.
 
 #### 3.4.13 UC-12 — Browse Code and History
 
