@@ -15,6 +15,7 @@ Every PR adds its lines under `## [Unreleased]`: one line per change, starting w
 - auth-svc: `RequireAuth` middleware and `UserID(ctx)` for other services
 - internal: shared config, Postgres pool, Redis client, JWT (HS256), bcrypt, HTTP helpers and rate limiting
 - dev: devcontainer, `make run` / `tests` / `deps` / `build`, migration runner
+- gateway: one entry point (`cmd/gateway`): `/api` routed to git2 core after auth-svc's token check (`/api/auth/*` and `/api/setup/*` public), Dash and Admin served as static apps, client `X-Git2-*` / `X-Real-IP` / `X-Forwarded-*` headers replaced, `X-Request-Id`, `nosniff`, 30 s per API request (git2-deploy gateway contract v0.1)
 - contracts: OpenAPI v0 for auth-svc (`contracts/auth-svc/`) and admin-api users, roles and teams (`contracts/admin-api/`)
 - contracts: OpenAPI v0 for dash-api (`contracts/dash-api/`): repositories and code browsing, drafts for merge requests, issues, notifications and pipelines (#17)
 - contracts: references to the `backup.v1` contract and the gateway contract v0.1, both kept in git2-deploy (`contracts/backup/`, `contracts/gateway/`) (#19)
