@@ -2,6 +2,7 @@ package authsvc
 
 import (
 	"errors"
+	"fmt"
 	"net/mail"
 	"regexp"
 	"strings"
@@ -57,9 +58,24 @@ func validateEmail(s string) error {
 	return nil
 }
 
+// reservedNames are top-level paths of the web apps and the gateway. A
+// user's page lives at /<username>, so a user with one of these names would
+// collide with them. The list is the gateway contract's (git2-deploy
+// docs/api/gateway.md, assumption B-05) plus the Dash routes /sign-in and
+// /register. Organizations share the name space and will use the same list.
+var reservedNames = map[string]bool{
+	"admin": true, "api": true, "assets": true, "explore": true,
+	"healthz": true, "login": true, "logout": true, "new": true,
+	"readyz": true, "register": true, "settings": true, "sign-in": true,
+	"static": true,
+}
+
 func validateUsername(s string) error {
 	if !usernamePattern.MatchString(s) {
 		return errors.New("username must be 3-39 characters of a-z, 0-9, '-' or '_', starting with a letter or digit")
+	}
+	if reservedNames[s] {
+		return fmt.Errorf("username %q is reserved", s)
 	}
 	return nil
 }
