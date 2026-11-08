@@ -31,6 +31,7 @@ Every PR adds its lines under `## [Unreleased]`: one line per change, starting w
 - docs: Platform and Backup requirements in the Requirements Specification: gateway header trust, Git route and client IP (FR-02, FR-03, FR-05, FR-99), container hardening (NFR-35), backup settings from `git2.yaml`, retention and snapshot deletion (FR-65, FR-76, FR-100) (#23)
 - docs: identity v0 design (roles, teams, first-admin setup) in `docs/design/identity-v0.md`
 - docs: README, project charter, project plan, team map, roadmap, this changelog
+- web: dash-api types generated from `contracts/dash-api/openapi.yaml` into `@git2/api` (`pnpm --filter @git2/api gen`); the `web` check fails when they are out of date
 
 ### Changed
 - auth-svc: `RequireAuth` checks revocation and the disabled marker in one Redis round trip; it still fails open on a Redis fault

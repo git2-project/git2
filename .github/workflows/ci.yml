@@ -87,6 +87,17 @@ jobs:
           cache-dependency-path: web/pnpm-lock.yaml
 
       - run: pnpm install --frozen-lockfile
+
+      # The dash-api types are generated from contracts/dash-api/openapi.yaml
+      # and committed; a contract change must come with the regenerated file.
+      - name: dash-api types match the contract
+        run: |
+          pnpm --filter @git2/api gen
+          if ! git diff --exit-code -- packages/api/src/generated; then
+            echo "::error::run 'pnpm --filter @git2/api gen' in web/ and commit the result"
+            exit 1
+          fi
+
       - run: pnpm typecheck
       - run: pnpm lint
       - run: pnpm test
