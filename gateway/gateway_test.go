@@ -327,11 +327,17 @@ func TestWebApps(t *testing.T) {
 		{"/alice/repo", "DASH INDEX", 200},
 		{"/assets/app.js", "DASH JS", 200},
 		{"/assets/missing.js", "", 404},
+		// Client routes whose last segment has a dot: a repository name or a
+		// file path in the code browser. Only assets/ may answer 404.
+		{"/alice/my.app", "DASH INDEX", 200},
+		{"/alice/repo/blob/main/README.md", "DASH INDEX", 200},
+		{"/alice/assets/x.js", "DASH INDEX", 200},
 		{"/admin", "ADMIN INDEX", 200},
 		{"/admin/", "ADMIN INDEX", 200},
 		{"/admin/users/42", "ADMIN INDEX", 200},
 		{"/admin/assets/app.js", "ADMIN JS", 200},
 		{"/admin/assets/missing.js", "", 404},
+		{"/admin/users/jane.doe", "ADMIN INDEX", 200},
 		{"/api", "", 404},
 	}
 	for _, c := range cases {

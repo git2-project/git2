@@ -10,10 +10,16 @@ import (
 	"strings"
 )
 
+// assetDir is where Vite writes the hashed bundles. "assets" is a reserved
+// owner name (git2-deploy docs/api/gateway.md), so no client route starts
+// with it.
+const assetDir = "assets/"
+
 // spa serves a built single-page app from dir. A path that names a file is
-// served as that file. A path without a file extension is a client-side
-// route and gets index.html; a missing file with an extension (a stale
-// asset) is a 404, so a script tag never receives HTML.
+// served as that file. A missing file under assets/ (a stale bundle) is a
+// 404, so a script tag never receives HTML. Every other path is a client-side
+// route and gets index.html, even with a dot in it: repository names and
+// code-browser file paths (/alice/repo/blob/main/README.md) have one.
 //
 // prefix is stripped from the URL first ("/admin" for Admin, "" for Dash).
 func spa(dir, prefix string) http.Handler {
@@ -35,7 +41,7 @@ func spa(dir, prefix string) http.Handler {
 				http.Error(w, "could not read file", http.StatusInternalServerError)
 				return
 			}
-			if path.Ext(name) != "" {
+			if strings.HasPrefix(name, assetDir) {
 				http.NotFound(w, r)
 				return
 			}
