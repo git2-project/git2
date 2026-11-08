@@ -127,7 +127,9 @@ func TestPostgresUpdateUser(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := store.Create(ctx, User{Email: p + "b@example.com", Username: p + "b", PasswordHash: "x", IsActive: true}); err != nil {
+	// b is an admin, so demoting a below is not refused as the last one
+	// (TestPostgresUpdateUserLastAdmin covers that).
+	if _, err := store.Create(ctx, User{Email: p + "b@example.com", Username: p + "b", PasswordHash: "x", IsActive: true, Role: RoleAdmin}); err != nil {
 		t.Fatal(err)
 	}
 
