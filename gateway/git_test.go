@@ -310,3 +310,26 @@ func TestReadyzChecksEveryUpstream(t *testing.T) {
 		t.Fatalf("/healthz: status %d, want 200 while an upstream is down", rec.Code)
 	}
 }
+
+// The username is the client's; a huge one must not become a huge Redis key.
+func TestSignInLimiterBoundsUsernameKeys(t *testing.T) {
+	_, userKey := NewSignInLimiter(nil).keys("203.0.113.7", strings.Repeat("a", 1<<16))
+	if len(userKey) > len("rl:git-signin-fail:user:")+maxUsernameKey {
+		t.Fatalf("user key is %d bytes", len(userKey))
+	}
+}
+
+// An upstream that answers but is not healthy (git-svc's /readyz-style 503)
+// counts as not ready, like one that does not answer.
+func TestReadyzNeedsA200(t *testing.T) {
+	sick := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer sick.Close()
+	u, _ := url.Parse(sick.URL)
+	rec := httptest.NewRecorder()
+	readyz(map[string]*url.URL{"git2": u}).ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/readyz", nil))
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status %d, want 503", rec.Code)
+	}
+}

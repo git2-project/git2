@@ -22,6 +22,10 @@ const (
 	signInWindow     = 10 * time.Minute
 	signInFailsPerIP = 30
 	signInFailsUser  = 100
+	// maxUsernameKey bounds the username part of a Redis key. The username
+	// comes from the client; auth-svc's are at most 39 characters, so a
+	// longer one never signs in and its tail does not need its own counter.
+	maxUsernameKey = 64
 )
 
 // SignInLimiter counts failed sign-ins in Redis. Like the other limits it
@@ -41,6 +45,9 @@ func NewSignInLimiter(rdb *redis.Client) *SignInLimiter {
 }
 
 func (l *SignInLimiter) keys(ip, username string) (ipKey, userKey string) {
+	if len(username) > maxUsernameKey {
+		username = username[:maxUsernameKey]
+	}
 	return l.keyPrefix + "ip:" + ip, l.keyPrefix + "user:" + strings.ToLower(username)
 }
 
