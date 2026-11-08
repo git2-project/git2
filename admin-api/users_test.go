@@ -27,15 +27,21 @@ import (
 type memStore struct {
 	mu    sync.Mutex
 	users []authsvc.User
-	teams map[uuid.UUID][]authsvc.UserTeam
+	// teams in id order, and their members by team and user id.
+	teams   []authsvc.Team
+	members map[uuid.UUID]map[uuid.UUID]authsvc.TeamMember
 	// fail, when set, is returned by every call to simulate a database fault.
 	fail error
+	// teamFail, when set, is returned by the team calls only.
+	teamFail error
 	// lastAdmin, when set, is treated as the last active admin, as if
 	// another admin had just been removed concurrently.
 	lastAdmin uuid.UUID
 }
 
-func newMemStore() *memStore { return &memStore{teams: map[uuid.UUID][]authsvc.UserTeam{}} }
+func newMemStore() *memStore {
+	return &memStore{members: map[uuid.UUID]map[uuid.UUID]authsvc.TeamMember{}}
+}
 
 func (s *memStore) index(id uuid.UUID) int {
 	return slices.IndexFunc(s.users, func(u authsvc.User) bool { return u.ID == id })
@@ -150,7 +156,14 @@ func (s *memStore) UserTeams(_ context.Context, id uuid.UUID) ([]authsvc.UserTea
 	if s.fail != nil {
 		return nil, s.fail
 	}
-	return s.teams[id], nil
+	var out []authsvc.UserTeam
+	for _, t := range s.teams {
+		if m, ok := s.members[t.ID][id]; ok {
+			out = append(out, authsvc.UserTeam{TeamID: t.ID, TeamName: t.Name, Role: m.Role, AddedAt: m.AddedAt})
+		}
+	}
+	slices.SortFunc(out, func(a, b authsvc.UserTeam) int { return strings.Compare(a.TeamName, b.TeamName) })
+	return out, nil
 }
 
 func (s *memStore) Disable(_ context.Context, id uuid.UUID) (time.Time, error) {
@@ -216,7 +229,7 @@ func newHarness(t *testing.T) *harness {
 		mr:    mr,
 	}
 	r := chi.NewRouter()
-	r.Route("/api", NewHandler(Deps{Users: h.store, JWT: h.jwt, Redis: rdb}).Mount)
+	r.Route("/api", NewHandler(Deps{Users: h.store, Teams: h.store, JWT: h.jwt, Redis: rdb}).Mount)
 	// A route behind RequireAuth only, like every Dash route: it reads no
 	// database, so it sees a disable only through the Redis marker.
 	r.With(authsvc.RequireAuth(h.jwt, rdb)).Get("/api/dash-probe", func(w http.ResponseWriter, _ *http.Request) {
@@ -411,8 +424,12 @@ func TestListUsersFiltersAndPages(t *testing.T) {
 func TestGetUser(t *testing.T) {
 	h := newHarness(t)
 	ada := h.addUser("ada@example.com", "ada", authsvc.RoleUser)
-	team := uuid.New()
-	h.store.teams[ada.ID] = []authsvc.UserTeam{{TeamID: team, TeamName: "payments", Role: authsvc.RoleMaintainer}}
+	ctx := context.Background()
+	payments, _ := h.store.CreateTeam(ctx, "payments", "")
+	if _, _, err := h.store.PutTeamMember(ctx, payments.ID, ada.ID, authsvc.RoleMaintainer); err != nil {
+		t.Fatal(err)
+	}
+	team := payments.ID
 
 	rec := h.do(http.MethodGet, "/api/admin/users/"+ada.ID.String(), h.adminToken, nil)
 	if rec.Code != http.StatusOK {
