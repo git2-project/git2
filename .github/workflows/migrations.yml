@@ -1,0 +1,52 @@
+# Check migrations on every pull request (Roadmap A3). Never touches Supabase:
+# the files are applied from scratch to a throwaway Postgres in the runner.
+# The apply-to-Supabase job (A4) comes once the team has Supabase access.
+#
+# No paths filter on purpose: a required check that does not run blocks the
+# merge, and this job takes seconds.
+name: migrations
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: migrations-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  migrations-check:
+    name: migrations-check
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    services:
+      postgres:
+        # Keep on the same major version as the Supabase dev project.
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 2s --health-timeout 5s --health-retries 30
+    env:
+      POSTGRES_DSN: postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The frozen-file rule compares against the base branch.
+          fetch-depth: 0
+
+      - name: Names, numbering, first-line comments, frozen files
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: helpers/ci/check-migrations.sh "origin/$BASE_REF"
+
+      # helpers/dev/migrate.sh is what make migrate runs: each file in its own
+      # transaction, recorded in schema_migrations.
+      - name: Apply every migration from scratch
+        run: |
+          bash helpers/dev/migrate.sh
+          bash helpers/dev/migrate.sh --status

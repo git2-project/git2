@@ -30,8 +30,8 @@ The Requirement Analysis Report (23.11.2026) will refine these requirements. The
 
 **Structure of this document:**
 
-- **Section 2.1** lists functional requirements FR-01–FR-96, grouped by Project Plan task T-01–T-17, each with a priority and an acceptance condition.
-- **Section 2.2** lists non-functional requirements NFR-01–NFR-34: security, performance, usability, reliability, portability, maintainability and design constraints.
+- **Section 2.1** lists functional requirements FR-01–FR-100, grouped by Project Plan task T-01–T-17, each with a priority and an acceptance condition.
+- **Section 2.2** lists non-functional requirements NFR-01–NFR-35: security, performance, usability, reliability, portability, maintainability and design constraints.
 - **Section 3.1** describes the nine user types and external actors (UT-01–UT-09) and how their permissions differ.
 - **Section 3.2** presents five personas (P-01–P-05), thirteen user scenarios (SC-01–SC-13), and a user story for every WBS activity of the Project Plan (US-01–US-42).
 - **Section 3.3** contains one use case diagram for the whole system and twelve diagrams for the main functionalities.
@@ -74,21 +74,22 @@ The requirements are grouped by Project Plan task. Each one is linked to the tas
 | Requirement ID | Related task ID(s) | Related deliverable ID(s) | Functional requirement (natural language) | Priority | Verification / acceptance condition |
 |---|---|---|---|---|---|
 | FR-01 | T-01 | D-01 | The system shall expose every function used by the web apps, the git2 CLI and git2-mcp through a REST API under `/api`, described by one OpenAPI 3 specification kept in `contracts/`. | Must | Contract tests in CI compare every endpoint's requests and responses with the OpenAPI spec (D-01 acceptance). Mock servers are generated from the spec (WBS-1.1). |
-| FR-02 | T-01 | D-01 | The system shall provide one HTTPS entry point (the gateway). It terminates TLS, routes each `/api` request to the service that owns it, and serves the Dash and Admin web applications as static files. | Must | Both UIs and all APIs are reachable through one HTTPS endpoint on the integration instance (WBS-1.2, M0 demo). |
-| FR-03 | T-01, T-02 | D-01 | The gateway shall reject, with HTTP 401 and before the request reaches a service, any API request that has no valid access token or PAT. Only these endpoints are exempt: sign-in, session refresh and sign-out, first-run setup (while no administrator exists), and health checks. | Must | An automated test calls every endpoint four ways: without a token, and with an expired, a revoked and a tampered token. It expects 401 each time. The exempt list is checked against the OpenAPI spec. |
-| FR-04 | T-01 | D-01 | When a push changes a repository, the system shall write a `repo.pushed` event in the same PostgreSQL transaction as the push metadata and deliver it to the subscribing services at least once. A consumer shall recognise a repeated delivery by its event ID and process it only once. | Must | Outbox unit tests show three things. The event row exists only if the push is committed. The relay redelivers after a crash between sending and acknowledging. A duplicated event causes no second effect (WBS-1.3). |
-| FR-05 | T-01 | D-01 | The gateway shall limit requests in a time window per signed-in user, or per client IP address for unauthenticated requests. Requests above the limit get HTTP 429 with a `Retry-After` header. | Must | A test sends requests above the configured limit and expects 429 with `Retry-After`. Requests from another user or IP are not affected (WBS-1.4). |
+| FR-02 | T-01 | D-01 | The system shall provide one HTTPS entry point (the gateway). It terminates TLS, routes each `/api` request to the service that owns it, sends Git over HTTPS (`/<owner>/<repo>.git/*`) to the Git service, and serves the Dash and Admin web applications as static files. It is the only port the instance publishes; the services behind it are reachable only from the instance's internal network. | Must | Both UIs, all APIs and Git over HTTPS are reachable through one HTTPS endpoint on the integration instance, and no other git2 port is open on the host (WBS-1.2, M0 demo). |
+| FR-03 | T-01, T-02 | D-01 | The gateway shall reject, with HTTP 401 and before the request reaches a service, any API request that has no valid access token or PAT. Only these endpoints are exempt: sign-in, session refresh and sign-out, first-run setup (while no administrator exists) and health checks. Whether the API reference (FR-91) is public is decided with WBS-16.3; until then it needs a token like any other API path. A path is matched only in its clean form: a path with dot segments or encoded separators is refused, so a request cannot reach a protected endpoint through an exempt prefix. | Must | An automated test calls every endpoint four ways: without a token, and with an expired, a revoked and a tampered token. It expects 401 each time. It also calls protected endpoints through dot-segment and percent-encoded variants of exempt paths (for example `/api/auth/../repos`) and expects them refused. The exempt list is checked against the OpenAPI spec. |
+| FR-04 | T-01 | D-01 | When a push changes one or more refs of a repository, the system shall write one `repo.pushed` event that lists every changed ref, and deliver it to the subscribing services at least once. A consumer shall recognise a repeated delivery by its event ID and process it only once. Events about data kept in PostgreSQL, such as a repository's creation and deletion, are written in the same transaction as that data. A push changes refs on disk, so its event is written right after Git updates the refs: an event is never written for a push that did not happen, and a push whose event could not be written is logged. | Must | Outbox and integration tests show four things. A push that changes refs writes exactly one event with all of its ref updates. A push that is rejected, or changes no ref, writes none. The relay redelivers after a crash between sending and acknowledging. A duplicated event causes no second effect (WBS-1.3). |
+| FR-05 | T-01 | D-01 | The gateway shall limit requests in a time window per signed-in user, or per client IP address for unauthenticated requests. Requests above the limit get HTTP 429 with a `Retry-After` header. The client IP address is the one the gateway reports (FR-99); an address header sent by the client is ignored. Failed Git sign-ins (FR-27) are limited separately, per client IP and per username; only failures count, so correct sign-ins are never held. | Must | A test sends requests above the configured limit and expects 429 with `Retry-After`. Requests from another user or IP are not affected (WBS-1.4). Two clients behind the gateway get separate limits, and a client that sends its own `X-Real-IP` is still limited by its real address. Repeated wrong Git passwords get 429 from one IP and for one username spread over many IPs, while correct sign-ins from that IP still work. |
 | FR-06 | T-01 | D-01 | The system shall cache frequently read API data in Redis with an expiry time. A repeated read within the expiry is served without a PostgreSQL query. | Must | A test shows that a second identical read is served from the cache and that the entry disappears after its expiry (WBS-1.4). |
 | FR-07 | T-01, T-11 | D-01 | Each service shall offer a health-check endpoint that needs no authentication. It reports whether the service is running and whether its PostgreSQL and Redis connections work. | Must | The health endpoints answer without a token. Stopping PostgreSQL or Redis turns the matching field to unhealthy at the next check. FR-69 and `git2ctl` use these endpoints. |
+| FR-99 | T-01 | D-01 | The gateway shall pass to the services only the identity and client information it set itself. It removes every `X-Git2-*`, `X-Real-IP` and `X-Forwarded-*` header the client sent, and sets the client's IP address and a request ID. On Git routes it adds the signed-in user's ID. On `/api` the caller's `Authorization` header reaches the service unchanged, and the service verifies the token again. Services trust these headers only on connections from the gateway's network. | Must | Smoke test on the Compose instance: a request with a forged `X-Git2-User-Id` and `X-Real-IP` reaches no service with those values, and the service logs the client's real address, not the gateway's (WBS-1.2). |
 | FR-08 | T-02 | D-01, D-02, D-03 | The system shall provide one shared sign-in page for Dash and Admin, where a user with a local account signs in with email address and password. After one sign-in, the user can open both web applications without signing in again. Admin opens only for administrators. | Must | M0 demo and E2E test: sign in once, then open Dash and Admin in the same browser. A non-administrator is refused in Admin (WBS-2.2). |
 | FR-09 | T-02 | D-01 | On a successful sign-in, the system shall create a session in Redis and return a short-lived access token and a refresh token in the `X-Access-Token` and `X-Refresh-Token` response headers, never in the response body. | Must | An API test checks both headers and confirms that the JSON body contains no token. It then finds the session in Redis (WBS-2.1). |
 | FR-10 | T-02 | D-01 | The system shall let a client exchange a valid refresh token for a new access and refresh token pair. The used refresh token stops working. If an already-used refresh token is presented again, the system ends the whole session. | Must | Unit tests against miniredis. Rotation returns a new pair and the old token is refused. Replaying the old token revokes the session, so the newest token is refused too. |
 | FR-11 | T-02 | D-01, D-02, D-03 | The system shall let a signed-in user sign out. Sign-out revokes the current access token and the refresh session at once. | Must | After sign-out, `GET /api/auth/me` with the old access token returns 401, and a refresh with the old refresh token fails. |
-| FR-12 | T-02 | D-01 | Every service shall accept access tokens issued by auth-svc and identify the calling user from them. It shall refuse with HTTP 401 a token that is expired, revoked, signed with another key or algorithm, or has no expiry. | Must | JWT unit tests with expired, revoked, re-signed, `alg: none` and expiry-less tokens. Protected routes use the shared `RequireAuth` middleware. |
+| FR-12 | T-02 | D-01 | Every service shall accept access tokens issued by auth-svc and identify the calling user from them. It shall refuse with HTTP 401 a token that is expired, revoked, signed with another key or algorithm, or has no expiry. During a Redis fault, the revocation check on access tokens fails open (see the note "Redis faults and tokens"). | Must | JWT unit tests with expired, revoked, re-signed, `alg: none` and expiry-less tokens. Protected routes use the shared `RequireAuth` middleware. |
 | FR-13 | T-02 | D-01 | When a sign-in fails, the system shall return the same "invalid credentials" error for an unknown email address and for a wrong password. It shall refuse a disabled account with a distinct "account is disabled" error and limit sign-in attempts per client IP address. | Must | API tests cover an unknown email, a wrong password and a disabled account. Repeated attempts from one IP get 429. |
 | FR-14 | T-03 | D-01, D-03 | The system shall let an instance administrator create, edit, disable and re-enable user accounts. A disabled user cannot sign in or refresh a session, and the user's PATs stop working. | Must | Admin E2E flow. API tests for a disabled user: sign-in returns 403, refresh returns 401 and the PAT returns 401 (WBS-3.1). |
 | FR-15 | T-03 | D-01, D-03 | The system shall let an instance administrator create organizations and teams, add and remove team members, and give a user or a team a role (Read, Write or Maintain) on an organization or a repository. | Must | The admin E2E flow creates an organization, a team and a role assignment, and API tests read them back (WBS-3.1). |
-| FR-16 | T-03 | D-01 | The system shall check the caller's permission on the server for every API call and Git operation. It shall refuse an action that the caller's role does not allow with HTTP 403 or a Git error, whatever the web UI shows. | Must | Authorization test matrix: every endpoint is called with an allowed role and a denied role (Project Plan §1.4). |
+| FR-16 | T-03 | D-01 | The system shall check the caller's permission on the server for every API call and Git operation. It shall refuse an action that the caller's role does not allow with HTTP 403 or a Git error, whatever the web UI shows. A repository the caller cannot read answers "not found" (404) instead, so that its existence is not revealed (FR-97). | Must | Authorization test matrix: every endpoint is called with an allowed role and a denied role (Project Plan §1.4). |
 | FR-17 | T-03 | D-01, D-03 | The system shall let a user create a PAT with a name and one or more scopes, at least a read-only scope and a read-write scope. The token value is shown once, when it is created, and stored only as a hash. | Must | An API test creates a token of each scope. Database inspection shows only hashes. A read-only token cannot perform a write (WBS-3.2). |
 | FR-18 | T-03 | D-01, D-03 | The system shall let a user list and revoke their PATs. A revoked token is refused on the next request. | Must | Revoke a token and reuse it at once for an API call and a `git fetch`. Both are refused (WBS-3.2). |
 | FR-19 | T-03 | D-01, D-03 | The system shall let a user add, list and remove SSH public keys on their account and show each key's fingerprint. | Must | API and UI tests add a valid key, reject a malformed or duplicate key, and remove a key (WBS-3.2). |
@@ -97,29 +98,31 @@ The requirements are grouped by Project Plan task. Each one is linked to the tas
 | FR-22 | T-04 | D-01, D-02, D-03 | When an OIDC provider is configured, the sign-in page shall offer sign-in through it. After a successful OIDC sign-in, the system signs the user in. On the first sign-in it creates a git2 account, or links the identity to an existing account with the same verified email address. | Must | Integration test with Keycloak. The first sign-in creates the account and a second sign-in reuses it. An existing local account with the same email is linked (WBS-4.1). |
 | FR-23 | T-04 | D-01, D-03 | The system shall let an instance administrator configure an LDAP directory and test the connection. The settings are the server URL, the bind account, and the user and group search bases. Users can then sign in with their LDAP username and password. | Must | Integration test with the OpenLDAP container: a seeded user signs in and a wrong password is refused (WBS-4.2). |
 | FR-24 | T-04 | D-01, D-03 | The system shall map LDAP groups to git2 teams chosen by the administrator. At each LDAP sign-in, it adds the user to, or removes the user from, the mapped teams to match the user's current LDAP groups. | Must | Integration test: moving a seeded user between LDAP groups changes their git2 team membership at the next sign-in (WBS-4.2). |
-| FR-25 | T-05 | D-01, D-02 | The system shall let a user create a repository owned by their own account, or by an organization where they have the Maintain role. The user gives a name, an optional description and a default branch name. Repository names are unique per owner, ignoring letter case. | Must | API and UI tests create repositories. Creating `Api` next to `api` under the same owner is refused (WBS-5.1). |
+| FR-25 | T-05 | D-01, D-02 | The system shall let a user create a repository owned by their own account, or by an organization where they have the Maintain role. The user gives a name, an optional description and an optional default branch name, which is `main` if left empty. A name has 1–100 characters from letters, digits, `.`, `_` and `-`, does not start with `.` or `-`, and does not end with `.git`. Repository names are unique per owner, ignoring letter case. | Must | API and UI tests create repositories. Creating `Api` next to `api` under the same owner is refused, and so are names that break the rules, such as `.hidden`, `app.git` or a name of 101 characters (WBS-5.1). |
 | FR-26 | T-05 | D-01, D-02 | The system shall let a user with the Maintain role delete a repository after typing its name to confirm. A deleted repository is no longer listed or reachable over Git, and its name can be reused at once. | Must | A test deletes a repository, checks that a clone fails, and creates a new repository with the same name (WBS-5.1). |
 | FR-27 | T-05, T-03 | D-01 | The system shall let a standard `git` client clone, fetch and push a repository over HTTPS (the Git Smart HTTP protocol). The client authenticates with the username and a PAT. | Must | Integration tests run the real `git` CLI for clone, fetch, and push of new commits, branches and tags (WBS-5.2, M1 demo). |
 | FR-28 | T-05 | D-01 | The system shall allow clone and fetch only to users with at least the Read role on the repository, and push only to users with at least the Write role. A refusal is shown in the `git` client's error output. | Must | Integration tests with users of each role. The FR-16 matrix includes Git operations. |
 | FR-29 | T-05 | D-01 | The system shall let a standard `git` client clone, fetch and push over SSH with a key registered on the user's account (FR-19). The permission checks are the same as for HTTPS. | Could (optional, WBS-5.3) | `git clone ssh://…` and push succeed with a registered key and fail with an unknown key (WBS-5.3). |
-| FR-30 | T-06 | D-02 | The system shall show the file tree of any branch or tag of a repository, and the content of a selected text file with syntax highlighting. | Must | An E2E test opens files in several languages on two branches (WBS-6.1). |
-| FR-31 | T-06 | D-02 | The system shall show the commit history of a selected branch. For a selected commit, it shows the message, author and date, and the diff of each changed file. | Must | An E2E test compares the commit list and one commit's diff with the `git log` and `git show` output of the same repository (WBS-6.1). |
+| FR-30 | T-06 | D-02 | The system shall show the file tree of any branch or tag of a repository, directories first, with a breadcrumb back to the root. It shows the content of a selected text file with syntax highlighting and line numbers. Selecting a line number gives a URL that links to that line. A binary file, a file over 1 MiB or a Git LFS file is shown with its size and a download link instead of its content. | Must | An E2E test opens files in several languages on two branches, follows a line link, and opens a binary, a 2 MiB and an LFS file (WBS-6.1). |
+| FR-97 | T-06 | D-02 | The system shall show a signed-in user the repositories of one owner that they can read, sorted by name, with name, owner and description. The owner is the user themselves unless they choose another user or organization. The next page of 50 is loaded when the user scrolls to the end. A repository the user cannot read is not listed, and its URL shows "not found". | Must | UI and API test with a user who owns 60 repositories, and a second user with a repository the first cannot read: the first user's list loads two pages in name order, the second user's list does not show that repository, and its URL answers 404 (WBS-6.1). |
+| FR-98 | T-06 | D-02 | When a repository has no commits yet, the system shall show its HTTPS clone URL with a copy button and the commands for a first push, instead of a file tree. | Should | UI test with a new, empty repository. After the shown commands are run, the page shows the file tree (WBS-6.1). |
+| FR-31 | T-06 | D-02 | The system shall show the commit history of a selected branch, directory or file, newest first, with each commit's title, author, date and short SHA. The history of a directory or file contains only the commits that changed it. For a selected commit, it shows the full message, author, date and parent commits, and the diff of each changed file with added and removed lines. When a commit changes more than 300 files, the page says that the list is truncated. | Must | An E2E test compares the commit list and one commit's diff with the `git log` and `git show` output of the same repository (WBS-6.1). |
 | FR-32 | T-06 | D-02 | The system shall list a repository's branches and tags, each with its latest commit, and let the user switch the branch or tag being browsed. | Must | UI test with a repository that has several branches and tags (WBS-6.1). |
 | FR-33 | T-06 | D-02 | The system shall search the default branch of a repository for a text query. It returns the matching files with their matching lines, each linked to the file view. | Could (optional, WBS-6.2) | A search for a known string returns exactly the files that `git grep` finds on the default branch (WBS-6.2). |
 | FR-34 | T-07 | D-01, D-02 | The system shall let a user with the Maintain role mark a branch as protected and set its rules. The rules state who may push to it directly, who may merge merge requests into it, and how many approvals a merge request needs first. | Must | UI and API tests save the rules and read them back (WBS-7.1). |
 | FR-35 | T-07 | D-01 | The system shall reject a push to a protected branch from any user its rules do not allow. It shall reject force-pushes to a protected branch and its deletion from every user. The `git` client shows the reason. | Must | Integration tests with the real `git` CLI: a direct push, a force-push and a branch deletion are rejected with a message, and the refs stay unchanged (WBS-7.1). |
 | FR-36 | T-07, T-08 | D-01, D-02 | The system shall merge a merge request into a protected branch only when the branch's merge rules allow the merging user and the required number of approvals is reached. | Must | A merge without enough approvals is refused. After approval, the same merge succeeds (WBS-7.1, WBS-8.1). |
 | FR-37 | T-07 | D-01 | The system shall implement the Git LFS protocol over HTTPS, so that a `git` client with `git-lfs` uploads and downloads large files with the same credentials and Read/Write permissions as Git. LFS file locking is not required. | Must | An integration test pushes and clones a repository with LFS-tracked files. A user with only the Read role cannot upload (WBS-7.1). |
-| FR-38 | T-08 | D-01, D-02 | The system shall let a user with the Write role open a merge request from a source branch to a target branch of the same repository, with a title and a description. The author can close it without merging and reopen it. | Must | An E2E test opens, closes and reopens a merge request (WBS-8.2). |
+| FR-38 | T-08 | D-01, D-02 | The system shall let a user with the Write role open a merge request from a source branch to a target branch of the same repository, with a title and a description. Before it is created, the user sees the commits and changes between the two branches. The new merge request gets a number (`!n`) within the repository. The author can close it without merging and reopen it. | Must | An E2E test opens, closes and reopens a merge request (WBS-8.2). |
 | FR-39 | T-08 | D-01, D-02 | The system shall show a merge request's commits and the diff between its source and target branches. Both update when new commits are pushed to the source branch. | Must | An E2E test pushes to the source branch and checks that the diff changes (WBS-8.1, WBS-8.2). |
-| FR-40 | T-08 | D-01, D-02 | The system shall let a user with the Read role comment on a specific line of a merge request's diff, comment on the merge request as a whole, and reply to a comment. | Must | An E2E test adds an inline comment, a general comment and a reply, then reloads the page and finds all three (WBS-8.2). |
+| FR-40 | T-08 | D-01, D-02 | The system shall let a user with the Read role comment on a specific line of a merge request's diff, comment on the merge request as a whole, and reply to a comment. When a later push changes the commented line, the comment is marked as outdated but stays readable. | Must | An E2E test adds an inline comment, a general comment and a reply, then reloads the page and finds all three. A push that changes the commented line marks the inline comment as outdated (WBS-8.2). |
 | FR-41 | T-08 | D-01, D-02 | The system shall let a user with the Write role approve a merge request and withdraw the approval. It shows who has approved. | Must | E2E test (WBS-8.2, M2 demo). |
 | FR-42 | T-08 | D-01, D-02 | The system shall merge a merge request with the strategy the merging user chooses: merge commit, squash or fast-forward. | Must | An integration test runs each strategy and checks the resulting history of the target branch with `git log` (WBS-8.1). |
-| FR-43 | T-08 | D-01, D-02 | The system shall detect when a merge request cannot be merged, because changes conflict or a fast-forward is impossible. It shows the reason and the conflicting files and leaves the target branch unchanged. | Must | Integration test with a prepared conflict: the merge is refused, the conflicting files are listed and the target ref is unchanged (WBS-8.1). |
+| FR-43 | T-08 | D-01, D-02 | The system shall detect when a merge request cannot be merged, because changes conflict or a fast-forward is impossible. It shows the reason and the conflicting files and leaves the target branch unchanged. Whenever a merge is not allowed (conflicts, an impossible fast-forward, missing approvals or a branch rule, FR-36), the merge button in Dash is disabled and the reason is shown next to it. | Must | Integration test with a prepared conflict: the merge is refused, the conflicting files are listed and the target ref is unchanged (WBS-8.1). |
 | FR-44 | T-08 | D-01, D-02 | The system shall list a repository's merge requests filtered by state: open, merged or closed. | Must | UI and API test with merge requests in all three states (WBS-8.2). |
-| FR-45 | T-09 | D-01, D-02 | The system shall let a user with the Read role on a repository create an issue with a title and a description, and comment on issues. The issue's author or a user with the Write role can close and reopen it. | Must | E2E test (WBS-9.1). |
-| FR-46 | T-09 | D-01, D-02 | The system shall let a user with the Write role create labels and milestones in a repository, and set an issue's labels, milestone and one or more assignees. | Must | E2E test (WBS-9.1). |
-| FR-47 | T-09 | D-01, D-02 | The system shall list a repository's issues filtered by state, label, milestone and assignee. | Should | UI and API test with issues that cover each filter value. |
+| FR-45 | T-09 | D-01, D-02 | The system shall let a user with the Read role on a repository create an issue with a title and a description, and comment on issues. A new issue gets a number (`#n`) within the repository. The issue's author or a user with the Write role can close and reopen it. | Must | E2E test (WBS-9.1). |
+| FR-46 | T-09 | D-01, D-02 | The system shall let a user with the Write role create labels and milestones in a repository, and set an issue's labels, milestone and one or more assignees. Every change of labels, milestone, assignees or state is shown in the issue's history with who made it and when. | Must | E2E test: each change appears in the issue's history (WBS-9.1). |
+| FR-47 | T-09 | D-01, D-02 | The system shall list a repository's issues filtered by state, label, milestone and assignee. The chosen filters are kept in the page URL, so a filtered list can be bookmarked and shared. | Should | UI and API test with issues that cover each filter value. Opening the copied URL in a new session shows the same list. |
 | FR-48 | T-09 | D-01, D-02 | When an issue, a merge request or a comment mentions an existing user as `@username`, the system shall create one in-app notification for that user, linking to where the mention was made. | Must | A test mentions an existing user and an unknown name. It finds one notification for the user and none for the unknown name (WBS-9.1). |
 | FR-49 | T-09 | D-01, D-02 | The system shall show a signed-in user an unread-notification counter and a notification list. Both update without a page reload when a new notification arrives, and the user can mark notifications as read. | Must | E2E test with two browser sessions: a mention made in one session updates the counter in the other without a reload. |
 | FR-50 | T-10 | D-04 | The system shall read the pipeline definition from the `.git2-ci.yml` file at the root of the pushed commit. The format describes stages, jobs, each job's container image and script, artifacts and caches. It is documented and published as a JSON schema. | Must | The spec document and the JSON schema exist. Schema tests accept the example files and reject known-bad files (WBS-10.1). |
@@ -130,25 +133,26 @@ The requirements are grouped by Project Plan task. Each one is linked to the tas
 | FR-55 | T-10 | D-04 | A runner shall run each job in a new container started from the job's image through the Docker Engine API, without privileged mode and with CPU and memory limits. It reports the job's exit status and removes the container after the job. | Must | A runner integration test checks the container settings with `docker inspect` and checks that no job container is left afterwards (WBS-10.2). |
 | FR-56 | T-10 | D-04, D-02 | The system shall show a running job's log in the browser as the job prints it, and keep the complete log for viewing after the job ends. | Must | Timestamp test (NFR-14). After the job, the stored log equals the job's output byte for byte (WBS-10.4). |
 | FR-57 | T-10 | D-04, D-02 | The system shall store the files that a job declares as artifacts in object storage, and let users with the Read role download them from the job page. | Must | Run a pipeline with an artifact, download it and compare checksums (WBS-10.4). |
-| FR-58 | T-10 | D-02 | The system shall show three views for each repository: a pipeline list (status, branch, commit and trigger), a pipeline graph of stages and jobs with their status, and a job page with its log. | Must | E2E test (WBS-10.5, M3 demo). |
-| FR-59 | T-10, T-08 | D-02 | The system shall show on each merge request the status of the latest pipeline of its source branch, with a link to that pipeline. | Must | E2E test: the status on the merge request changes from running to passed (WBS-10.5). |
+| FR-58 | T-10 | D-02 | The system shall show three views for each repository: a pipeline list, newest first (status, branch, commit and trigger), a pipeline graph of stages and jobs with their status and duration, and a job page with its log. | Must | E2E test (WBS-10.5, M3 demo). |
+| FR-59 | T-10, T-08 | D-02 | The system shall show on each merge request the status of the latest pipeline of its source branch, with a link to that pipeline. If that pipeline has failed, the merge box shows this as a warning next to the merge button. | Must | E2E test: the status on the merge request changes from running to passed. A failing pipeline shows the warning (WBS-10.5). |
 | FR-60 | T-10 | D-04, D-02 | The system shall let a user with the Write role cancel a pending or running pipeline, which stops its running jobs. The user can also retry a finished pipeline, which creates a new pipeline for the same commit. | Must | Integration and E2E tests. The `retry_pipeline` tool of git2-mcp uses the same API (FR-88). |
 | FR-61 | T-10 | D-04 | The system shall mark a job as failed, with a visible reason, in four cases: its script fails, it exceeds its time limit, its image cannot be pulled, or its runner stops reporting while running it. | Should | One test per failure reason: `script_failure`, `timeout`, `image_pull_failure` and `runner_lost`. |
 | FR-62 | T-10 | D-04, D-02, D-03 | The system shall let a user with the Maintain role define secret CI variables for a repository, and let an instance administrator define them for the whole instance. Secret values are write-only (never shown again), stored encrypted, and given to a job as environment variables only when a runner takes the job. | Should | An API test shows that a stored secret cannot be read back, and database inspection shows only ciphertext. A test job proves delivery by printing the variable's length. |
 | FR-63 | T-10 | D-04 | Before a job runs, the system shall restore the cache paths declared in `.git2-ci.yml` from an earlier job on the same branch. It saves them after the job succeeds. | Could (optional, WBS-10.6) | The second run of a pipeline finds the cached directory (WBS-10.6). |
 | FR-64 | T-11 | D-03 | When no administrator account exists, the system shall show a first-run setup wizard that creates the first administrator and stores the basic instance settings. Once an administrator exists, the wizard is no longer available. | Must | Admin E2E flow on a fresh instance. Afterwards the wizard address shows the sign-in page (WBS-11.1). |
-| FR-65 | T-11 | D-03 | The system shall let an instance administrator view and change the instance settings in the Admin plane: the instance name and external URL, and the authentication, runner and backup settings. Each change is recorded in the audit log. | Must | A UI test changes a setting and finds its audit entry (WBS-11.1). |
+| FR-65 | T-11 | D-03 | The system shall let an instance administrator view and change the instance settings in the Admin plane: the instance name and external URL, and the authentication, runner and backup settings. The backup settings changed here are the schedule and the retention (FR-73, FR-100); the backup destination, its credentials and the `age` public key are set by the operator in `git2.yaml` and shown read-only, without credentials. Each change is recorded in the audit log. | Must | A UI test changes a setting and finds its audit entry (WBS-11.1). |
 | FR-66 | T-11, T-10 | D-03, D-04 | The system shall let an instance administrator create a one-time runner registration token with an expiry time. A runner registers only with an unused, unexpired token and then receives its own runner token. Both tokens are stored only as hashes. | Must | The admin E2E flow registers a runner. Reusing the token, and using an expired token, both fail (WBS-11.1). |
 | FR-67 | T-11, T-10 | D-03, D-04 | The system shall list the registered runners with their name, labels, version and status (online, offline or paused). It shall let an instance administrator pause, resume and remove a runner. A paused or removed runner gets no new jobs. | Must | UI and API test: the queued jobs of a paused runner go to another matching runner (WBS-11.1). |
 | FR-68 | T-11 | D-03 | The system shall record every administrative action in an audit log: who did it, what was done, when, and to which object. This covers user, team and role changes, SSO, LDAP and instance-setting changes, runner registration and removal, and backup runs. The log cannot be changed or deleted through the UI or API. Administrators can search it by actor, action and time range. | Must | A test performs each administrative action and finds its entry. No update or delete endpoint exists for audit entries (WBS-11.2). |
 | FR-69 | T-11 | D-03 | The system shall show administrators a health dashboard with the current status of each git2 service, PostgreSQL and Redis, taken from the health checks (FR-07). | Must | Stop one service on the integration instance. The dashboard shows it as unhealthy (WBS-11.2). |
-| FR-70 | T-12 | D-05 | The system shall create full-instance snapshots. A snapshot contains a dump of every service schema in PostgreSQL, all repositories including Git LFS objects, the `git2.yaml` configuration and the instance secrets. It is packed as one archive, encrypted with `age`, and includes a manifest with a checksum for every file. | Must | Inspect a decrypted snapshot: the manifest lists every component and the checksums match (WBS-12.1). |
+| FR-70 | T-12 | D-05 | The system shall create full-instance snapshots. A snapshot contains a dump of every service schema in PostgreSQL, all repositories including Git LFS objects, the `git2.yaml` configuration and the instance secrets. It is packed as one archive, encrypted with `age`, and includes a manifest with a checksum for every file. A checksum of the encrypted archive is stored next to it in the destination, so that a damaged upload is detected before decryption (FR-76). | Must | Inspect a decrypted snapshot: the manifest lists every component and the checksums match, and the archive checksum matches the uploaded file (WBS-12.1). |
 | FR-71 | T-12 | D-05 | The system shall take the database and repository parts of a snapshot in one consistency window. Every repository and commit that the restored database refers to must exist in the restored repositories. | Must | Take a snapshot during concurrent pushes, restore it, and check that every repository row has a matching repository on disk (risk R-09 mitigation). |
-| FR-72 | T-12 | D-05 | The system shall write snapshots to, and read them from, an S3-compatible bucket or a local disk directory chosen by the administrator. | Must | Driver tests against Garage or SeaweedFS and against local disk (WBS-12.2). |
+| FR-72 | T-12 | D-05 | The system shall write snapshots to, and read them from, an S3-compatible bucket or a local disk directory that the operator sets in `git2.yaml` (FR-65). | Must | Driver tests against Garage or SeaweedFS and against local disk (WBS-12.2). |
 | FR-73 | T-12 | D-05, D-03 | The system shall take snapshots automatically on the schedule set by the administrator (nightly by default), and let an administrator start a snapshot on demand. | Must | A scheduled run is observed on the integration instance, and an on-demand run is started from the Admin plane (WBS-12.2). |
 | FR-74 | T-12 | D-05, D-03 | The system shall record each backup run with its start and end time, size and result, and show the runs in the Admin plane. A failed run is shown as failed, with its error. | Should | A test with an unreachable bucket shows a failed run with the error. |
+| FR-100 | T-12 | D-05, D-03 | The system shall keep the newest snapshots up to a retention count set by the administrator (1 to 365) and delete older ones, and shall let an administrator delete a snapshot. When the count is lowered, the extra snapshots are deleted only after the next snapshot succeeds. Each deletion is recorded in the audit log. | Should | With a retention of 2, a third snapshot deletes the oldest. Lowering the retention keeps every snapshot until the next one succeeds. A deletion from the Admin plane has an audit entry (WBS-12.2). |
 | FR-75 | T-12 | D-05, D-06 | The system shall restore a snapshot onto a fresh server with one command, `git2ctl restore`, given the snapshot location and the `age` private key. The restore brings back all repositories, users, teams, settings and secrets. | Must | Weekly restore test on a new VM from W5, M4 demo and D-05 acceptance (WBS-12.3). |
-| FR-76 | T-12 | D-05, D-06 | Before changing anything on the target server, `git2ctl restore` shall decrypt the snapshot and check every file against the manifest checksums. It stops with a clear error if the key is wrong, a file is missing or a checksum does not match. | Must | Restore tests with a wrong key, a truncated archive and a modified file all stop before any data is written. |
+| FR-76 | T-12 | D-05, D-06 | Before changing anything on the target server, `git2ctl restore` shall check the archive against its checksum, then decrypt it and check every file against the manifest checksums. It stops with a clear error if the archive is damaged, the key is wrong, a file is missing or a checksum does not match. | Must | Restore tests with a damaged upload, a wrong key, a truncated archive and a modified file all stop before any data is written. |
 | FR-77 | T-13 | D-06 | The system shall install on a clean Linux host with Docker with one command, `git2ctl install`. The command starts all git2 services, PostgreSQL and Redis with Docker Compose, keeps repository and database data on named volumes, and finishes when all health checks pass. | Must | Timed install on a clean VM (NFR-15) and D-06 acceptance (WBS-13.1, WBS-13.2). |
 | FR-78 | T-13 | D-06 | `git2ctl upgrade` shall move an installation to a newer release. It applies the database migrations and keeps all repositories, users, settings and pipeline history. | Must | Install the previous release, add data, upgrade, then check the data and the health checks (WBS-13.2). |
 | FR-79 | T-13 | D-06 | The system shall provide a Helm chart that installs git2 on Kubernetes with one Deployment per service, so that each service can be scaled independently. | Must | The chart installs on a k3d or kind cluster. Scaling one Deployment leaves the others unchanged (WBS-13.3). |
@@ -174,6 +178,8 @@ The requirements are grouped by Project Plan task. Each one is linked to the tas
 
 - **Task coverage.** Every Project Plan task T-01–T-17 has at least one requirement above. T-18 (project management and project documentation) adds no system behavior, so it has no functional requirement. Its course reports and demo are covered by D-09 and by this document itself (WBS-18.4).
 - **Roles.** This document assumes three repository and organization roles: **Read**, **Write** and **Maintain**. It also assumes an instance-wide **administrator** flag on accounts. The Charter and the Plan require role-based permissions but do not name roles, so these names and the permission table in Section 3.1 are this document's proposal, to be confirmed in the Requirement Analysis Report. A role given on an organization applies to all of its repositories.
+- **Numbering.** FR-97 and FR-98 were added after the first numbering. They are listed under T-06, the task they belong to, and keep their numbers so that references to them stay stable.
+- **Repository list (FR-97).** The first version lists the repositories of one owner at a time. A single list across all owners, newest first, is left to the Requirement Analysis Report, because it depends on how repository access and team grants are stored.
 - **Ownership and scope of objects.** A repository is owned by a user or by an organization. A merge request is always between two branches of the same repository, because forks are not in the agreed scope.
 - **Optional scope.** FR-29, FR-33 and FR-63 are the Project Plan's optional activities, WBS-5.3, WBS-6.2 and WBS-10.6. The `search_code` tool of git2-mcp (FR-88) depends on FR-33: if WBS-6.2 is dropped, `search_code` returns a "not available" tool error instead of results.
 - **Reduction rule.** If the schedule slips, the Project Plan's risk R-16 contingency may reduce some features through a change request. For example, FR-42 could be reduced to one merge strategy, or FR-69 to a minimal health dashboard. Any such change is recorded as a new version of this document.
@@ -183,11 +189,14 @@ The requirements are grouped by Project Plan task. Each one is linked to the tas
   - Tokens are returned only in response headers.
   - A database or Redis fault is answered with 5xx, never with 401 (NFR-22).
 - **Sources beyond the Charter and the Plan.** Some details come from the team's merged artifacts:
-  - FR-09–FR-13 describe the auth-svc API that already runs.
-  - FR-25's naming rule comes from the git-svc schema (`migrations/002_git_repositories.sql`).
+  - FR-09–FR-13 describe the auth-svc API that already runs. The development build also has an unauthenticated `POST /api/auth/register` endpoint, used only to create test accounts during development. It is removed from release builds, as FR-20 requires, and is therefore not in the FR-03 exempt list.
+  - FR-25's case-insensitive uniqueness comes from the git-svc schema (`migrations/002_git_repositories.sql`), and its name and default-branch rules from the `git.v1` contract (`contracts/git/`).
   - FR-54's label matching, FR-61's failure reasons and FR-62's CI secrets come from the `ci.v1` contract and the ci-svc schema (`migrations/003_ci_pipelines.sql`).
-- **Values not fixed here.** This document sets no access-token or refresh-token lifetimes, rate-limit sizes, registration-token expiry, job time limits or backup retention. These are configuration values. Their defaults are set in the Software Design Report.
+- **Values not fixed here.** This document sets no access-token or refresh-token lifetimes, rate-limit sizes, registration-token expiry, job time limits or the default backup retention. These are configuration values. Their defaults are set in the Software Design Report.
+- **Redis faults and tokens.** This applies to JWT access tokens only. If Redis cannot be reached, the gateway and the services still accept an access token that is correctly signed and not expired: its revocation marker (FR-11, FR-12) and its user's disabled marker (FR-14) live in Redis, and those checks fail open, as auth-svc's do, so that a Redis fault does not sign everyone out (NFR-21, NFR-22). An access token revoked or disabled during the fault works until it expires, at most one access-token lifetime (`JWT_EXPIRY`, 15 minutes). PATs (FR-18) and the sign-in of a disabled account (FR-14) are checked in PostgreSQL and are not affected. FR-03's revoked-token test runs with Redis up. This is recorded as an exception under NFR-09.
 - **Git LFS.** LFS file locking is left out on purpose, following risk R-13. LFS objects are part of the repository data, so they are included in snapshots (FR-70).
+- **Push events (FR-04).** Git keeps a repository's refs on disk, not in PostgreSQL, so a push and its event cannot share a transaction. git-svc writes the event right after Git updates the refs. If git-svc stops or loses its database in between, the push stays without an event, and git-svc logs the loss. `repo.pushed` is the Project Plan's name; the `git.v1` contract calls the event `RepositoryPushed`. This follows git2-codeplane ADR 0012, which is still under review in git2-codeplane#5.
+- **Git sign-in before PATs (FR-27).** PATs arrive with WBS-3.2 in W6. Until then, including at the M1 demo, Git clients sign in with the account's username and password, as proposed in the gateway contract v0.1 (git2-deploy#13).
 
 ### 2.2 Non-functional Requirements
 
@@ -198,7 +207,7 @@ The thresholds below are the ones agreed in Project Plan §1.4. Where the Plan g
 | NFR-01 | Security (access control) | Every API endpoint shall require authentication, except those listed in FR-03. Every endpoint shall check the caller's permissions on the server. | Whole system; FR-03, FR-16 | Authorization tests for every endpoint, with allowed and denied roles. |
 | NFR-02 | Security (credentials) | User passwords shall be stored only as salted, deliberately slow one-way hashes. A password shall never be stored in plain text or reversible form, returned by the API or written to logs. | auth-svc; FR-08, FR-14 | Unit tests and inspection of the user table, which holds only hashes. A log review during the W9 bug bash. |
 | NFR-03 | Security (tokens) | Access tokens shall be JWTs signed with HS256 only and shall always carry an expiry. PATs, runner tokens and runner registration tokens shall be stored only as hashes. No token shall appear in a response body. | auth-svc, ci-svc; FR-09, FR-12, FR-17, FR-66 | JWT unit tests with tampered, `alg: none` and expiry-less tokens. Database inspection. API tests on the response bodies. |
-| NFR-04 | Security (transport) | All external traffic shall be encrypted with TLS: web UIs, API, Git over HTTPS and Git LFS. The gateway shall not serve the UIs or the API over plain HTTP. | Gateway; FR-02 | A TLS check of the live instance. A plain-HTTP request is refused or redirected to HTTPS. |
+| NFR-04 | Security (transport) | All external traffic shall be encrypted with TLS: web UIs, API, Git over HTTPS and Git LFS. The gateway shall not serve the UIs or the API over plain HTTP. The only exception is an instance reachable from its own machine only (loopback), for development and trials; `git2ctl install` refuses plain HTTP for any other address. | Gateway, git2ctl; FR-02, FR-77 | A TLS check of the live instance. A plain-HTTP request is refused or redirected to HTTPS. `git2ctl install` with an `http://` URL for a non-loopback host is refused. |
 | NFR-05 | Security (backups) | Snapshots shall be encrypted with `age` before they leave the server. A snapshot shall not be readable without the private key, and the private key shall never be stored in the snapshot or in the backup bucket. | backup-svc; FR-70, FR-75 | Try to open a snapshot without the key. Inspect the bucket contents (Project Plan §1.4). |
 | NFR-06 | Security (CI secrets) | CI secret values shall be encrypted at rest (AES-256-GCM), with the key kept outside the database. | ci-svc; FR-62 | Database inspection shows only ciphertext. Configuration review confirms the key comes from the environment. |
 | NFR-07 | Security (CI isolation) | CI jobs shall run unprivileged, with CPU and memory limits, in one container per job. On the live reference instance, runners shall run on a separate VM from the git2 server. | git2-runner; FR-55 | Container settings checked with `docker inspect`. Deployment review of the live instance (risk R-05 mitigation). |
@@ -229,6 +238,7 @@ The thresholds below are the ones agreed in Project Plan §1.4. Where the Plan g
 | NFR-32 | Observability | Services shall export traces with OpenTelemetry and metrics in Prometheus format, and the team shall provide Grafana dashboards for them. | Whole system | Traces and metrics of a full developer flow are visible on the integration instance. |
 | NFR-33 | Openness / licensing | git2's source code shall be public under an OSI-approved open-source license. | All git2 repositories | A LICENSE file is present in every repository at v1.0.0. |
 | NFR-34 | Design constraint (technology) | The system shall use the Charter's technology stack: Go services, gRPC inside and REST outside, PostgreSQL and Redis, React and TypeScript web apps served as static files, and Python for the CLI and git2-mcp. | Whole system | Architecture review in the Software Design Report. |
+| NFR-35 | Security (containers) | Every git2 container shall run as a non-root user, with a read-only root file system, no Linux capabilities and no privilege escalation. A service that needs to write gets a volume or a temporary file system. | All images; FR-77, FR-80 | The Compose smoke test inspects every running git2 container for its user, read-only root, dropped capabilities and `no-new-privileges`. |
 
 **Non-functional requirement notes / assumptions:**
 
@@ -239,7 +249,8 @@ The thresholds below are the ones agreed in Project Plan §1.4. Where the Plan g
   - A **clean host** is a Linux VM with Docker Engine and the Compose plugin, network access to GitHub Container Registry, and no earlier git2 data.
   - A **fresh server** for restore is a clean host as well.
 - **Agreed thresholds only.** The numbers in NFR-11–NFR-18 and NFR-29 come from Project Plan §1.4. No other threshold has been agreed, so availability targets and backup duration are not specified. The measurements are planned for W8 (k6, benchmarks, fault test, hallway test) and W9 (ASVS checklist).
-- **Password hashing.** Project Plan §1.4 names Argon2id. NFR-02 is written so that it can be verified independently of the algorithm. The final algorithm is recorded in the Software Design Report.
+- **ASVS exception (NFR-09, V3 session management).** During a Redis outage, revoking an access token or disabling its user can take effect up to one access-token lifetime (`JWT_EXPIRY`, 15 minutes) late, because those checks fail open (see the functional note "Redis faults and tokens"). PATs and sign-in are not affected.
+- **Password hashing.** Project Plan §1.4 names Argon2id, but the current auth-svc implementation uses bcrypt. This is a deviation from the Plan and goes through the change control of WBS-18.2. NFR-02 is written so that it can be verified independently of the algorithm. The final algorithm is recorded in the Software Design Report.
 - **Supported environments.**
   - Server: Linux on amd64 or arm64, with Docker or with Kubernetes (tested on k3d and kind).
   - Runners: Linux hosts with Docker.
@@ -257,9 +268,9 @@ The thresholds below are the ones agreed in Project Plan §1.4. Where the Plan g
 
 | User type ID | User type / actor | Description and responsibilities | Goals / typical actions | Related requirement ID(s) |
 |---|---|---|---|---|
-| UT-01 | Software developer | Writes code and works mainly in the Dash plane, using a standard `git` client, the git2 CLI or an AI agent. Has the Read or Write role on repositories, usually through a team. | Sign in; create repositories; push and clone; browse code; open merge requests and comment on them; file and work on issues; watch pipelines; create tokens for tools. | FR-08–FR-13, FR-17–FR-19, FR-22, FR-23, FR-25, FR-27–FR-33, FR-37–FR-40, FR-44, FR-45, FR-47–FR-49, FR-56–FR-60, FR-83–FR-86, FR-91, FR-93 |
+| UT-01 | Software developer | Writes code and works mainly in the Dash plane, using a standard `git` client, the git2 CLI or an AI agent. Has the Read or Write role on repositories, usually through a team. | Sign in; create repositories; push and clone; browse code; open merge requests and comment on them; file and work on issues; watch pipelines; create tokens for tools. | FR-08–FR-13, FR-17–FR-19, FR-22, FR-23, FR-25, FR-27–FR-33, FR-37–FR-40, FR-44, FR-45, FR-47–FR-49, FR-56–FR-60, FR-83–FR-86, FR-91, FR-93, FR-97, FR-98 |
 | UT-02 | Team lead / code reviewer | A senior developer who owns a repository or the repositories of a team, usually with the Maintain role. | Review, approve and merge merge requests; protect branches; plan work with milestones and labels; manage repository CI secrets; delete repositories. | FR-26, FR-34–FR-36, FR-40–FR-43, FR-46, FR-47, FR-59, FR-60, FR-62 |
-| UT-03 | Instance administrator (IT) | An IT or system administrator whose account has the administrator flag. Works in the Admin plane. | Run the setup wizard; manage users, organizations, teams and roles; connect OIDC and LDAP; register runners; change instance settings; configure backups; read the audit log and the health dashboard. | FR-14–FR-16, FR-20, FR-21, FR-23, FR-24, FR-62, FR-64–FR-69, FR-72–FR-74 |
+| UT-03 | Instance administrator (IT) | An IT or system administrator whose account has the administrator flag. Works in the Admin plane. | Run the setup wizard; manage users, organizations, teams and roles; connect OIDC and LDAP; register runners; change instance settings; configure backups; read the audit log and the health dashboard. | FR-14–FR-16, FR-20, FR-21, FR-23, FR-24, FR-62, FR-64–FR-69, FR-72–FR-74, FR-100 |
 | UT-04 | Platform operator | IT staff with shell access to the host or the Kubernetes cluster. Often the same person as UT-03, but acting outside the web UI. Keeps the `age` private key. | Install, upgrade and restore git2 with `git2ctl` or Helm; prepare runner hosts. | FR-75–FR-82, FR-92 |
 | UT-05 | AI coding agent (external) | An MCP client, such as Claude Code or Claude Desktop, that uses git2 through git2-mcp. It acts for the developer whose PAT it holds. | List repositories, read files, search code, work with issues, open and review merge requests, read and retry pipelines. | FR-16, FR-17, FR-87–FR-90 |
 | UT-06 | Identity provider (external system) | The organization's OIDC provider (for example Keycloak) or LDAP directory (for example OpenLDAP or Active Directory). | Authenticates users and supplies identity claims and group memberships. | FR-21–FR-24 |
@@ -288,7 +299,7 @@ The thresholds below are the ones agreed in Project Plan §1.4. Where the Plan g
 
 ### 3.2 User Scenarios
 
-The scenarios follow the five personas below. All persons and organizations are fictional.
+A persona is a fictional but typical user, described in enough detail to make the scenarios concrete. Each persona below belongs to one or more of the user types in Section 3.1, and each scenario (SC-01–SC-13) tells a short story of one persona using git2. Deniz, Selin and Murat work at the same fictional bank, so several scenarios follow on from each other. All persons and organizations are fictional.
 
 | Persona ID | Name | User type | Background | Goals and concerns |
 |---|---|---|---|---|
@@ -308,13 +319,13 @@ The bank's security policy does not allow source code on external services, and 
 **Persona:** P-03 — Murat  
 **Related requirements:** FR-21, FR-23, FR-24, FR-15, FR-66, FR-67, FR-68, FR-96
 
-Next, Murat wants developers to use their existing company accounts. In the Admin plane Murat adds the bank's LDAP directory and tests the connection. Murat creates the organization `payments` with the team `Payments`, which gets the Write role on the organization. The LDAP group `payments-dev` is mapped to that team. Murat also connects the bank's OIDC provider for staff who already use single sign-on. To run builds, Murat creates a one-time runner registration token, installs git2-runner on a separate VM and registers it with the label `linux`. The runner shows as online in the runner list. Finally Murat opens the audit log and finds an entry for each of these actions, with Murat as the actor. The scenario ends with an instance ready for developers: identities come from the directory, team membership follows LDAP groups, and builds have a runner.
+Next, Murat wants developers to use their existing company accounts. In the Admin plane Murat adds the bank's LDAP directory and tests the connection. Murat creates the organization `payments` with the team `Payments`, which gets the Write role on the organization, and gives Selin, the team lead, the Maintain role on it. The LDAP group `payments-dev` is mapped to that team. Murat also connects the bank's OIDC provider for staff who already use single sign-on. To run builds, Murat creates a one-time runner registration token, installs git2-runner on a separate VM and registers it with the label `linux`. The runner shows as online in the runner list. Finally Murat opens the audit log and finds an entry for each of these actions, with Murat as the actor. The scenario ends with an instance ready for developers: identities come from the directory, team membership follows LDAP groups, and builds have a runner.
 
 **SC-03 — First sign-in, first repository and first push**  
-**Persona:** P-01 — Deniz  
-**Related requirements:** FR-08, FR-23, FR-24, FR-25, FR-17, FR-27, FR-30–FR-32, FR-93
+**Persona:** P-01 — Deniz (with P-02 — Selin)  
+**Related requirements:** FR-08, FR-23, FR-24, FR-25, FR-17, FR-27, FR-30–FR-32, FR-97, FR-98, FR-93
 
-Deniz opens git2 for the first time and signs in with the usual LDAP username and password. git2 creates Deniz's account and, because Deniz is in `payments-dev`, adds Deniz to the Payments team. Deniz creates the repository `payment-gateway` in the `payments` organization with the default branch `main`, and git2 shows the HTTPS clone URL and the first-push steps. Git over HTTPS needs a token, so Deniz creates a personal access token with the read-write scope, copies it (it is shown only once) and pushes the existing code with the normal `git` client. Back in Dash, Deniz browses the file tree, opens a Go file with syntax highlighting, switches to the `v2.2.0` tag and reads the history of `main`. Everything works as the user guide describes. If the optional SSH transport is delivered, Deniz could push with an SSH key instead. The scenario ends with the team's code hosted on the bank's own server.
+Deniz opens git2 for the first time and signs in with the usual LDAP username and password. git2 creates Deniz's account and, because Deniz is in `payments-dev`, adds Deniz to the Payments team. Selin, who has the Maintain role on the `payments` organization, has already created the empty repository `payment-gateway` there with the default branch `main`. When Deniz opens it, git2 shows the HTTPS clone URL and the first-push steps instead of a file tree. Git over HTTPS needs a token, so Deniz creates a personal access token with the read-write scope, copies it (it is shown only once) and pushes the existing code with the normal `git` client. Back in Dash, Deniz browses the file tree, opens a Go file with syntax highlighting, switches to the `v2.2.0` tag and reads the history of `main`. Everything works as the user guide describes. If the optional SSH transport is delivered, Deniz could push with an SSH key instead. The scenario ends with the team's code hosted on the bank's own server.
 
 **SC-04 — A pipeline on every push**  
 **Persona:** P-01 — Deniz  
@@ -354,9 +365,9 @@ Deniz uses Claude Code and wants it to see the team's issues and code on git2. D
 
 **SC-10 — Nightly backups and restoring after losing the server**  
 **Persona:** P-03 — Murat  
-**Related requirements:** FR-70–FR-76
+**Related requirements:** FR-70–FR-76, FR-100, FR-65
 
-Murat generates an `age` key pair and keeps the private key in the bank's safe. In the Admin plane Murat sets the backup destination to the bank's on-premises S3-compatible storage, with the nightly schedule and the public key. git2 writes a test object and saves the settings. Every night the backup list shows a new successful snapshot. One night the bucket credentials expire, and the run shows as failed with the error. Murat renews the credentials and starts a backup by hand. Months later the VM's disk fails. Murat prepares a new VM with Docker and runs `git2ctl restore` with the bucket location and the private key. `git2ctl` downloads the latest snapshot and checks every file against the manifest. It then brings back the database, the repositories with their LFS objects, `git2.yaml` and the secrets, and starts the services. After Murat moves the DNS name, developers sign in again and find every repository, merge request, issue, team and setting as it was at the snapshot. The scenario ends with the instance restored from one bucket with one command.
+Murat generates an `age` key pair and keeps the private key in the bank's safe. Murat writes the bank's on-premises S3-compatible storage, its credentials and the public key into `git2.yaml`. In the Admin plane Murat sees that destination, sets the nightly schedule and keeps the last 30 snapshots. Every night the backup list shows a new successful snapshot. One night the bucket credentials expire, and the run shows as failed with the error. Murat renews the credentials and starts a backup by hand. Months later the VM's disk fails. Murat prepares a new VM with Docker and runs `git2ctl restore` with the bucket location and the private key. `git2ctl` downloads the latest snapshot and checks every file against the manifest. It then brings back the database, the repositories with their LFS objects, `git2.yaml` and the secrets, and starts the services. After Murat moves the DNS name, developers sign in again and find every repository, merge request, issue, team and setting as it was at the snapshot. The scenario ends with the instance restored from one bucket with one command.
 
 **SC-11 — Investigating a problem and upgrading git2**  
 **Persona:** P-03 — Murat  
@@ -384,7 +395,7 @@ Each user-facing WBS activity has a user story (`US-##`). Internal and project-m
 |---|---|---|---|
 | SC-13 | WBS-1.1 | **US-01** — As the developer of a git2 client (a script, the git2 CLI or git2-mcp), I want every public endpoint described in one OpenAPI 3 contract so that I can generate a client and rely on the API's shape. | FR-01 |
 | SC-01 | WBS-1.2 | **US-02** — As a user, I want Dash, Admin and the API behind one HTTPS address so that I need only one URL and my traffic is always encrypted. | FR-02, FR-03 |
-| SC-04 | WBS-1.3 | **US-03** — As a developer, I want every push to start its pipeline exactly once, even if a service restarts during the push, so that no commit goes unbuilt. | FR-04, FR-51 |
+| SC-04 | WBS-1.3 | **US-03** — As a developer, I want every push to start its pipeline exactly once, even if its event is delivered twice or a service restarts while delivering it, so that no commit is built twice or skipped. | FR-04, FR-51 |
 | SC-13 | WBS-1.4 | **US-04** — As an administrator, I want per-user and per-IP request limits and cached hot reads so that one runaway script cannot slow git2 down for everyone. | FR-05, FR-06 |
 | SC-03 | WBS-2.1 | **US-05** — As a developer, I want to sign in once and stay signed in safely so that I do not retype my password, and a stolen refresh token cannot be reused. | FR-09–FR-13 |
 | SC-01 | WBS-2.2 | **US-06** — As an administrator who also writes code, I want one sign-in page for Dash and Admin so that one sign-in covers both planes. | FR-08, FR-11 |
@@ -395,7 +406,7 @@ Each user-facing WBS activity has a user story (`US-##`). Internal and project-m
 | SC-03 | WBS-5.1 | **US-11** — As a developer, I want to create and delete repositories myself so that I do not wait for IT. | FR-25, FR-26 |
 | SC-03 | WBS-5.2 | **US-12** — As a developer, I want to clone and push over HTTPS with my usual `git` client so that I keep my tools. | FR-27, FR-28 |
 | SC-03 | WBS-5.3 | **US-13** *(optional)* — As a developer, I want to clone and push over SSH with my registered key so that I need no token in my Git configuration. | FR-29 |
-| SC-03 | WBS-6.1 | **US-14** — As a developer, I want to browse files, branches, tags and commits with syntax highlighting so that I can read code without cloning it. | FR-30–FR-32 |
+| SC-03 | WBS-6.1 | **US-14** — As a developer, I want to browse files, branches, tags and commits with syntax highlighting so that I can read code without cloning it. | FR-30–FR-32, FR-97, FR-98 |
 | SC-09 | WBS-6.2 | **US-15** *(optional)* — As a developer, or an AI agent working for me, I want to search a repository's code so that I can find where something is defined. | FR-33 |
 | SC-06 | WBS-7.1 | **US-16** — As a team lead, I want to protect `main` and keep large files in Git LFS so that `main` changes only through reviewed merges and the history stays small. | FR-34–FR-37 |
 | SC-05 | WBS-8.1 | **US-17** — As a reviewer, I want to merge with a merge commit, squash or fast-forward, and to learn about conflicts before anything changes, so that the history of `main` looks the way the team agreed. | FR-39, FR-42, FR-43 |
@@ -528,18 +539,22 @@ flowchart LR
     Dev --> UC27
     Dev --> UC29
     Dev --> UC30
+    Lead --> UC04
     Lead --> UC10
     Lead --> UC14
     Lead --> UC17
     Lead --> UC18
     Lead --> UC19
+    Lead --> UC20
     Lead --> UC30
+    Admin --> UC04
     Admin --> UC03
     Admin --> UC05
     Admin --> UC07
     Admin --> UC23
     Admin --> UC24
     Admin --> UC25
+    Admin --> UC29
     Admin --> UC31
     Ops --> UC01
     Ops --> UC02
@@ -646,6 +661,7 @@ flowchart LR
 flowchart LR
     Dev["UT-01 Software developer<br/>(script author)"]
     Agent["UT-05 AI coding agent"]
+    Admin["UT-03 Instance administrator"]
     Ops["UT-04 Platform operator"]
 
     subgraph System["git2 — gateway, contracts and docs"]
@@ -660,6 +676,7 @@ flowchart LR
     Dev --> UC09
     Agent --> UC09
     Dev --> UC29
+    Admin --> UC29
     Ops --> UC29
     UC09 -.->|«include»| Limit
     UC09 -.->|«include»| Token
@@ -667,7 +684,7 @@ flowchart LR
     Cache -.->|«extend»| UC09
 ```
 
-**Functionality covered:** T-01, T-16 / FR-01–FR-07, FR-91–FR-94 / UC-09, UC-29  
+**Functionality covered:** T-01, T-16 / FR-01–FR-07, FR-99, FR-91–FR-94 / UC-09, UC-29  
 **Diagram notes:**
 
 - Every API call goes through the gateway and always includes the rate-limit check (FR-05), token validation (FR-03, FR-12) and the server-side permission check (FR-16).
@@ -772,6 +789,7 @@ flowchart LR
     Lead --> UC19
     Dev --> UC19
     Dev --> UC20
+    Lead --> UC20
     Labels -.->|«extend»| UC19
     UC19 -.->|«include»| Mention
 ```
@@ -788,6 +806,7 @@ flowchart LR
 ```mermaid
 flowchart LR
     Dev["UT-01 Software developer"]
+    Lead["UT-02 Team lead / reviewer"]
     Admin["UT-03 Instance administrator"]
     Runner["UT-07 CI runner"]
     Store["UT-08 Object storage"]
@@ -807,6 +826,8 @@ flowchart LR
     Dev --> UC21
     Dev --> UC22
     Admin --> UC23
+    Lead --> Secrets
+    Admin --> Secrets
     UC21 -.->|«include»| Validate
     UC21 -.->|«include»| RunJob
     Cache -.->|«extend»| RunJob
@@ -823,7 +844,7 @@ flowchart LR
 
 - A push by the developer starts UC-21. The runner takes part as a supporting actor that executes each job in its own container (FR-55).
 - Validation of `.git2-ci.yml` is always included (FR-50, FR-52).
-- CI secrets (FR-62) and caching (FR-63, optional) extend a pipeline only when they are defined.
+- CI secrets (FR-62) and caching (FR-63, optional) extend a pipeline only when they are defined. Secrets are defined by a maintainer for one repository (UT-02) or by an administrator for the whole instance (UT-03).
 - Following a pipeline includes the live log (FR-56). It is extended by cancel and retry (FR-60) and uses object storage for artifacts (FR-57).
 - Runner registration (UC-23) belongs to the Admin plane but is shown here because no job can run without it.
 
@@ -887,10 +908,10 @@ flowchart LR
     UC26 --- Store
 ```
 
-**Functionality covered:** T-12 / FR-70–FR-76 / UC-25, UC-26  
+**Functionality covered:** T-12 / FR-70–FR-76, FR-100 / UC-25, UC-26  
 **Diagram notes:**
 
-- An administrator configures backups and can start one on demand. The schedule starts the nightly runs.
+- An administrator sets the schedule and retention and can start a backup on demand. The operator sets the destination and the public key in `git2.yaml`. The schedule starts the nightly runs.
 - Every backup includes a consistent snapshot of the database and repositories (FR-71) and age encryption with a manifest (FR-70).
 - A restore always verifies the manifest before writing anything (FR-76).
 - The operator runs the restore from the host because the web UI does not exist yet on a fresh server.
@@ -1046,18 +1067,18 @@ flowchart LR
 
 | Project Plan task ID | Functional requirement ID(s) | Use case ID(s) | Scenario ID(s) |
 |---|---|---|---|
-| T-01 | FR-01–FR-07 | UC-09, UC-11, UC-21, UC-24 | SC-13, SC-04, SC-01 |
+| T-01 | FR-01–FR-07, FR-99 | UC-09, UC-11, UC-21, UC-24 | SC-13, SC-04, SC-01 |
 | T-02 | FR-03, FR-08–FR-13 | UC-04 | SC-03, SC-01 |
 | T-03 | FR-14–FR-20 | UC-07, UC-08 | SC-02, SC-03, SC-09 |
 | T-04 | FR-21–FR-24 | UC-05, UC-06 | SC-02, SC-03 |
 | T-05 | FR-25–FR-29 | UC-10, UC-11 | SC-03, SC-13 |
-| T-06 | FR-30–FR-33 | UC-12, UC-13 | SC-03, SC-09 |
+| T-06 | FR-30–FR-33, FR-97, FR-98 | UC-12, UC-13 | SC-03, SC-09 |
 | T-07 | FR-34–FR-37 | UC-14, UC-15, UC-18 | SC-06, SC-05 |
 | T-08 | FR-36, FR-38–FR-44, FR-59 | UC-16, UC-17, UC-18 | SC-05 |
 | T-09 | FR-45–FR-49 | UC-19, UC-20 | SC-07 |
 | T-10 | FR-50–FR-63 | UC-21, UC-22, UC-23 | SC-04, SC-05, SC-09 |
 | T-11 | FR-07, FR-64–FR-69 | UC-03, UC-23, UC-24 | SC-01, SC-02, SC-11 |
-| T-12 | FR-70–FR-76 | UC-25, UC-26 | SC-10 |
+| T-12 | FR-70–FR-76, FR-100 | UC-25, UC-26 | SC-10 |
 | T-13 | FR-77–FR-82 | UC-01, UC-02 | SC-01, SC-11, SC-12 |
 | T-14 | FR-83–FR-86 | UC-27 | SC-08 |
 | T-15 | FR-87–FR-90 | UC-28 | SC-09 |
@@ -1448,7 +1469,7 @@ Every development task from Project Plan §1.3 is covered. The optional items (F
 | **Goal / Purpose** | A program acting for a user reads or changes git2 data through the documented REST API, safely and with predictable errors. |
 | **Actor(s)** | UT-01 — Software developer (script author, git2 CLI); UT-05 — AI coding agent (through git2-mcp) |
 | **Related Project Plan task(s)** | T-01 |
-| **Related functional requirement(s)** | FR-01, FR-02, FR-03, FR-05, FR-06, FR-07, FR-16 |
+| **Related functional requirement(s)** | FR-01, FR-02, FR-03, FR-05, FR-06, FR-07, FR-16, FR-99 |
 
 **Pre-condition(s):**  
 - The client holds a PAT or access token (UC-08 or UC-04).
@@ -1458,8 +1479,8 @@ Every development task from Project Plan §1.3 is covered. The optional items (F
 
 1. **Client:** Sends an HTTPS request to an `/api/...` endpoint with its token.
 2. **System (gateway):** Terminates TLS and checks the caller's request budget (FR-05).
-3. **System (gateway):** Validates the token and routes the request to the service that owns the endpoint (FR-02, FR-03).
-4. **System (service):** Checks that the caller's role allows the action on the resource (FR-16).
+3. **System (gateway):** Validates the token, removes identity headers sent by the client and routes the request, with its `Authorization` header unchanged, to the service that owns the endpoint (FR-02, FR-03, FR-99).
+4. **System (service):** Verifies the token again and checks that the caller's role allows the action on the resource (FR-16).
 5. **System (service):** Performs the action, or reads the data, and builds a response that matches the OpenAPI specification (FR-01).
 6. **System (gateway):** Returns the response to the client.
 
@@ -1479,6 +1500,7 @@ Every development task from Project Plan §1.3 is covered. The optional items (F
 - **E3 — Not permitted (occurs at step 4):** The service answers 403 (FR-16).
 - **E4 — Invalid request body (occurs at step 5):** The service answers 400 when the body has unknown fields or trailing data or is larger than 64 KiB.
 - **E5 — Database or Redis fault (occurs at step 4 or 5):** The service answers 5xx, never 401, so the client keeps its token (NFR-22).
+- **E6: Service unreachable or too slow (occurs at step 3):** The gateway answers 503 when the service cannot be reached and 504 when it does not answer in time.
 
 **Post-condition(s):**  
 - Every request is either answered as the OpenAPI specification describes or refused with a documented status.
@@ -1518,7 +1540,7 @@ Every development task from Project Plan §1.3 is covered. The optional items (F
 **Exception / error flows (if applicable):**
 
 - **E1 — Name already used by this owner (occurs at step 4):** The system shows "name already exists" and creates nothing.
-- **E2 — Invalid name (occurs at step 4):** The name contains characters that are not allowed. The system shows the rule and creates nothing.
+- **E2 — Invalid name (occurs at step 4):** The name breaks the rules of FR-25, for example it contains characters that are not allowed or ends with `.git`. The system shows the rule and creates nothing.
 - **E3 — No permission (occurs at step 4 or A1.3):** The system answers 403 and changes nothing (FR-16).
 
 **Post-condition(s):**  
@@ -1548,7 +1570,7 @@ Every development task from Project Plan §1.3 is covered. The optional items (F
 3. **System:** Verifies the token and the Read role, then serves the repository over the Git Smart HTTP protocol (FR-27, FR-28).
 4. **Developer:** Commits locally and runs `git push`.
 5. **System:** Verifies the Write role and the branch protection rules, receives the objects and updates the refs (FR-28, FR-35).
-6. **System:** Records the push and a `repo.pushed` event in the same transaction (FR-04). The `git` client reports success.
+6. **System:** Right after the refs are updated, records one `repo.pushed` event that lists every ref the push changed (FR-04). The `git` client reports success.
 
 **Alternative flows:**
 
@@ -1569,10 +1591,11 @@ Every development task from Project Plan §1.3 is covered. The optional items (F
 - **E2 — Missing role (occurs at step 3 or 5):** The system refuses the operation, and `git` shows the error (FR-28).
 - **E3 — Protected branch (occurs at step 5):** The push, force-push or branch deletion is not allowed by the branch's rules. The system rejects it with a message that `git` prints, and leaves the refs unchanged (FR-35).
 - **E4 — Interrupted push (occurs at step 5):** The connection drops before the refs are updated. No ref changes and no event is recorded.
+- **E5 — The system stops right after the refs are updated (occurs at step 6):** The push stays, because Git has already updated the refs, but no event is recorded and no pipeline starts for it. The system logs the lost event (FR-04).
 
 **Post-condition(s):**  
 - After a clone, the developer has a complete copy of the repository.
-- After a push, the refs are updated and exactly one `repo.pushed` event is recorded and delivered at least once.
+- After a push that changed refs, the refs are updated and exactly one `repo.pushed` event lists them, unless E5 occurred. A recorded event is delivered at least once.
 
 #### 3.4.13 UC-12 — Browse Code and History
 
@@ -1583,19 +1606,19 @@ Every development task from Project Plan §1.3 is covered. The optional items (F
 | **Goal / Purpose** | A developer reads files and history of any branch or tag in the browser, without cloning. |
 | **Actor(s)** | UT-01 — Software developer (also UT-02) |
 | **Related Project Plan task(s)** | T-06 |
-| **Related functional requirement(s)** | FR-30, FR-31, FR-32 |
+| **Related functional requirement(s)** | FR-30, FR-31, FR-32, FR-97, FR-98 |
 
 **Pre-condition(s):**  
 - The developer is signed in and has the Read role on the repository.
 
 **Main success flow:**
 
-1. **Developer:** Opens the repository in Dash.
+1. **Developer:** Opens Dash and selects the repository from the repository list (FR-97).
 2. **System:** Shows the file tree of the default branch and its latest commit.
 3. **Developer:** Selects another branch or tag from the selector.
 4. **System:** Shows the file tree of that branch or tag (FR-32).
 5. **Developer:** Opens a file.
-6. **System:** Shows the file's content with syntax highlighting (FR-30).
+6. **System:** Shows the file's content with syntax highlighting and line numbers (FR-30).
 7. **Developer:** Opens the commit history and selects a commit.
 8. **System:** Shows the commit's message, author and date, and the diff of each changed file (FR-31).
 
@@ -1603,18 +1626,25 @@ Every development task from Project Plan §1.3 is covered. The optional items (F
 
 - **A1 — Empty repository (branches from step 2):**
   1. The repository has no commits yet.
-  2. The system shows the clone URL and the first-push instructions instead of a file tree.
-- **A2 — Binary or very large file (branches from step 6):**
-  1. The file cannot be displayed as text.
-  2. The system says so and offers a download instead of a highlighted view.
-- **A3 — Search instead of browsing (branches from step 3):**
+  2. The system shows the clone URL and the first-push instructions instead of a file tree (FR-98).
+- **A2 — Search instead of browsing (branches from step 3):**
   1. The developer searches the code (UC-13, optional).
   2. The developer opens a result, and the flow continues at step 6 at the matching line.
+- **A3 — Binary or very large file (branches from step 6):**
+  1. The file is binary, larger than 1 MiB or stored in Git LFS.
+  2. The system shows its size and offers a download instead of a highlighted view (FR-30).
+- **A4 — Link to a line (branches from step 6):**
+  1. The developer selects a line number.
+  2. The URL now points to that line and can be shared; opening it scrolls to and highlights the line (FR-30).
+- **A5 — History of a file or directory (branches from step 7):**
+  1. The developer opens the history from a file or directory instead of the branch.
+  2. The system lists only the commits that changed it (FR-31).
 
 **Exception / error flows (if applicable):**
 
 - **E1 — Branch, tag or path does not exist (occurs at step 4 or 6):** The system shows a "not found" page with a link back to the default branch.
-- **E2 — No Read role (occurs at step 1):** The system refuses access (FR-16).
+- **E2 — No Read role (occurs at step 1):** The repository is not in the list, and its URL shows "not found" (FR-16, FR-97).
+- **E3 — Very large commit (occurs at step 8):** The commit changes more than 300 files. The system shows the first 300 and says that the list is truncated (FR-31).
 
 **Post-condition(s):**  
 - Nothing has changed in the repository; browsing is read-only.
@@ -1753,13 +1783,13 @@ Every development task from Project Plan §1.3 is covered. The optional items (F
 2. **Developer:** Chooses the source branch and the target branch.
 3. **System:** Shows the commits and the diff between the two branches as a preview (FR-39).
 4. **Developer:** Enters a title and a description, optionally mentioning reviewers as `@username`, and submits.
-5. **System:** Creates the merge request in the open state, creates notifications for the mentioned users (FR-48), and shows the merge request page with the latest pipeline status of the source branch (FR-59).
+5. **System:** Creates the merge request in the open state with the next number (`!n`), creates notifications for the mentioned users (FR-48), and shows the merge request page with the latest pipeline status of the source branch (FR-59).
 
 **Alternative flows:**
 
 - **A1 — New commits after opening (branches from step 5):**
   1. The developer pushes more commits to the source branch.
-  2. The system updates the commits, the diff and the pipeline status of the merge request (FR-39).
+  2. The system updates the commits, the diff and the pipeline status of the merge request (FR-39). Inline comments on lines that changed are marked as outdated (FR-40).
 - **A2 — Close and reopen (branches from step 5):**
   1. The author closes the merge request without merging.
   2. It moves to the closed list (FR-44). The author can reopen it later (FR-38).
@@ -1833,7 +1863,7 @@ Every development task from Project Plan §1.3 is covered. The optional items (F
 **Main success flow:**
 
 1. **Team lead:** Opens the merge request.
-2. **System:** Shows the merge box: whether the merge request can be merged, the latest pipeline status, the approvals against the required number, and the merge strategies.
+2. **System:** Shows the merge box: whether the merge request can be merged, the latest pipeline status, the approvals against the required number, and the merge strategies. If the merge is not allowed, the merge button is disabled and the reason is shown (FR-43); if the latest pipeline failed, a warning is shown (FR-59).
 3. **Team lead:** Chooses merge commit, squash or fast-forward and selects **Merge** (FR-42).
 4. **System:** Checks the branch rules again (FR-36), performs the merge, updates the target branch and marks the merge request as merged.
 5. **System:** Records the update of the target branch as a push, which starts a pipeline on the target branch (UC-21, FR-51).
@@ -2137,18 +2167,17 @@ Every development task from Project Plan §1.3 is covered. The optional items (F
 | **Goal / Purpose** | The instance is backed up automatically and completely into storage the organization controls, encrypted so that only the key holder can read it. |
 | **Actor(s)** | UT-03 — Instance administrator (configures, starts on demand); UT-09 — Backup schedule (starts scheduled runs); UT-08 — Object storage (supporting) |
 | **Related Project Plan task(s)** | T-12 |
-| **Related functional requirement(s)** | FR-70, FR-71, FR-72, FR-73, FR-74, FR-68 |
+| **Related functional requirement(s)** | FR-70, FR-71, FR-72, FR-73, FR-74, FR-100, FR-65, FR-68 |
 
 **Pre-condition(s):**  
 - The administrator is signed in to Admin.
-- An S3-compatible bucket and its credentials, or a local directory, is available.
-- The operator has generated an `age` key pair and keeps the private key outside the instance and the bucket (NFR-05).
+- The operator has set the backup destination (an S3-compatible bucket with its credentials, or a local directory) and the `age` public key in `git2.yaml`, and keeps the private key outside the instance and the bucket (NFR-05).
 
 **Main success flow:**
 
 1. **Administrator:** Opens **Backups** in the Admin plane.
-2. **Administrator:** Sets the destination (bucket endpoint, name and credentials, or a local path), the schedule (nightly by default) and the `age` public key, and saves.
-3. **System:** Writes a small test object to the destination, saves the settings and writes an audit entry.
+2. **Administrator:** Sees the destination and the public key from `git2.yaml` (read-only, without credentials), sets the schedule (nightly by default) and the retention, and saves (FR-65, FR-100).
+3. **System:** Saves the settings and writes an audit entry (FR-68).
 4. **Backup schedule:** At the scheduled time, starts a backup (FR-73).
 5. **System:** Takes a consistent snapshot of every service schema and every repository, including LFS objects. It adds `git2.yaml` and the instance secrets, writes the manifest with checksums, and encrypts the archive with the public key (FR-70, FR-71).
 6. **System:** Uploads the archive to the destination (FR-72).
@@ -2160,12 +2189,15 @@ Every development task from Project Plan §1.3 is covered. The optional items (F
   1. The administrator selects **Back up now**, for example before an upgrade.
   2. The flow continues at step 5, and the run is audited as started by the administrator.
 - **A2 — Local disk destination (branches from step 2):**
-  1. The administrator chooses a local directory instead of a bucket.
-  2. Steps 3 and 6 use that directory.
+  1. The operator chose a local directory in `git2.yaml` instead of a bucket.
+  2. Step 6 uses that directory.
+- **A3: Delete a snapshot (branches from step 1):**
+  1. The administrator deletes a snapshot from the backup list.
+  2. The system removes it from the destination and writes an audit entry (FR-100, FR-68).
 
 **Exception / error flows (if applicable):**
 
-- **E1 — Destination unreachable or credentials wrong (occurs at step 3 or 6):** At step 3, the settings are not saved. At step 6, the run is recorded as failed with the error (FR-74). Earlier snapshots are not touched.
+- **E1 — Destination unreachable or credentials wrong (occurs at step 6):** The run is recorded as failed with the error (FR-74). The operator fixes `git2.yaml`. Earlier snapshots are not touched.
 - **E2 — Snapshot fails midway (occurs at step 5):** No partial archive is marked as complete, and the run is recorded as failed.
 
 **Post-condition(s):**  

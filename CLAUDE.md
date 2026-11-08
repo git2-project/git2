@@ -29,3 +29,5 @@ Context7 is configured for the repo in `.mcp.json`. Check library APIs (chi, pgx
 
 ## Commands
 `make run` · `make tests` · `make migrate` · `make show-migrations` · `make deps` · `make build`
+
+Before opening a PR that adds a migration: `helpers/ci/check-migrations.sh origin/dev/main` (the same check CI runs).

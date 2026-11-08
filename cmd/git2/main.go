@@ -20,6 +20,7 @@ import (
 	"github.com/git2-project/git2/internal/database"
 	"github.com/git2-project/git2/internal/httpx"
 	authjwt "github.com/git2-project/git2/internal/jwt"
+	"github.com/git2-project/git2/internal/realip"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 )
@@ -90,7 +91,8 @@ func run(ctx context.Context, cfg *config.Config) error {
 	}
 
 	r := chi.NewRouter()
-	r.Use(middleware.RequestID, middleware.Logger, middleware.Recoverer, middleware.Timeout(30*time.Second))
+	// realip first, so the logger and the rate limits see the client, not the gateway.
+	r.Use(realip.FromTrusted(cfg.TrustedProxies), middleware.RequestID, middleware.Logger, middleware.Recoverer, middleware.Timeout(30*time.Second))
 	r.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		httpx.JSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
