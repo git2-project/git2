@@ -22,6 +22,7 @@ Every PR adds its lines under `## [Unreleased]`: one line per change, starting w
 - contracts: OpenAPI v0 for auth-svc (`contracts/auth-svc/`) and admin-api users, roles and teams (`contracts/admin-api/`)
 - contracts: OpenAPI v0 for dash-api (`contracts/dash-api/`): repositories and code browsing, drafts for merge requests, issues, notifications and pipelines (#17)
 - contracts: references to the `backup.v1` contract and the gateway contract v0.1, both kept in git2-deploy (`contracts/backup/`, `contracts/gateway/`) (#19)
+- contracts: `git.v1` reference pinned to git2-codeplane `v0.2.0`: `RefService` and `CommitService` for dash-api's code-browsing endpoints, push events over smart HTTP (#15)
 - docs: Dash requirements in the Requirements Specification: code browser, repository list and empty repositories (FR-30, FR-31, FR-97, FR-98), merge requests, issues and pipelines (#16)
 - docs: Platform and Backup requirements in the Requirements Specification: gateway header trust, Git route and client IP (FR-02, FR-03, FR-05, FR-99), container hardening (NFR-35), backup settings from `git2.yaml`, retention and snapshot deletion (FR-65, FR-76, FR-100) (#23)
 - docs: identity v0 design (roles, teams, first-admin setup) in `docs/design/identity-v0.md`
