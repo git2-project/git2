@@ -28,6 +28,9 @@ type memStore struct {
 	fail error
 	// lookupDelay slows FindByID down, widening any race around it.
 	lookupDelay time.Duration
+	// setupHash is the stored setup token hash; "" means no row.
+	setupHash    string
+	setupCreated time.Time
 }
 
 func newMemStore() *memStore { return &memStore{users: map[uuid.UUID]User{}} }
@@ -35,6 +38,10 @@ func newMemStore() *memStore { return &memStore{users: map[uuid.UUID]User{}} }
 func (s *memStore) Create(_ context.Context, u User) (User, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	return s.createLocked(u)
+}
+
+func (s *memStore) createLocked(u User) (User, error) {
 	for _, existing := range s.users {
 		if existing.Email == u.Email {
 			return User{}, ErrEmailExists
@@ -44,6 +51,9 @@ func (s *memStore) Create(_ context.Context, u User) (User, error) {
 		}
 	}
 	u.ID = uuid.New()
+	if u.Role == "" {
+		u.Role = RoleUser
+	}
 	u.CreatedAt = time.Now()
 	u.UpdatedAt = u.CreatedAt
 	s.users[u.ID] = u
@@ -83,6 +93,123 @@ func (s *memStore) setFail(err error) {
 	s.fail = err
 }
 
+func (s *memStore) adminExistsLocked() bool {
+	for _, u := range s.users {
+		if u.Role == RoleAdmin && u.IsActive {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *memStore) AdminExists(context.Context) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.fail != nil {
+		return false, s.fail
+	}
+	return s.adminExistsLocked(), nil
+}
+
+func (s *memStore) PutSetupToken(_ context.Context, hash string, replace bool) (PutSetupResult, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.fail != nil {
+		return PutSetupResult{}, s.fail
+	}
+	if s.adminExistsLocked() {
+		return PutSetupResult{AdminExists: true}, nil
+	}
+	if s.setupHash != "" && !replace && time.Since(s.setupCreated) < SetupTokenTTL {
+		return PutSetupResult{ExpiresAt: s.setupCreated.Add(SetupTokenTTL)}, nil
+	}
+	s.setupHash, s.setupCreated = hash, time.Now()
+	return PutSetupResult{Stored: true, ExpiresAt: s.setupCreated.Add(SetupTokenTTL)}, nil
+}
+
+// CreateFirstAdmin mirrors PostgresStore: the whole check-create-burn runs
+// under one lock, as the real one runs in one transaction.
+func (s *memStore) CreateFirstAdmin(_ context.Context, hash string, u User) (User, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.fail != nil {
+		return User{}, s.fail
+	}
+	switch {
+	case s.setupHash == "" && s.adminExistsLocked():
+		return User{}, ErrSetupDone
+	case s.setupHash == "" || s.setupHash != hash:
+		return User{}, ErrBadSetupToken
+	case time.Since(s.setupCreated) >= SetupTokenTTL:
+		return User{}, ErrSetupTokenExpired
+	case s.adminExistsLocked():
+		s.setupHash = ""
+		return User{}, ErrSetupDone
+	}
+	u.Role = RoleAdmin
+	created, err := s.createLocked(u)
+	if err != nil {
+		return User{}, err
+	}
+	s.setupHash = ""
+	return created, nil
+}
+
+func (s *memStore) setRole(email string, role Role) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for id, u := range s.users {
+		if u.Email == email {
+			u.Role = role
+			s.users[id] = u
+		}
+	}
+}
+
+// Disable mirrors PostgresStore.Disable, including the last-admin rule.
+func (s *memStore) Disable(_ context.Context, id uuid.UUID) (time.Time, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.fail != nil {
+		return time.Time{}, s.fail
+	}
+	u, ok := s.users[id]
+	if !ok {
+		return time.Time{}, ErrNotFound
+	}
+	if u.Role == RoleAdmin && u.IsActive {
+		active := 0
+		for _, o := range s.users {
+			if o.Role == RoleAdmin && o.IsActive {
+				active++
+			}
+		}
+		if active == 1 {
+			return time.Time{}, ErrLastAdmin
+		}
+	}
+	now := time.Now()
+	u.IsActive = false
+	u.TokensValidAfter = &now
+	s.users[id] = u
+	return now, nil
+}
+
+func (s *memStore) Enable(_ context.Context, id uuid.UUID) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.fail != nil {
+		return s.fail
+	}
+	u, ok := s.users[id]
+	if !ok {
+		return ErrNotFound
+	}
+	u.IsActive = true
+	s.users[id] = u
+	return nil
+}
+
 func (s *memStore) setActive(email string, active bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -98,6 +225,9 @@ type harness struct {
 	t      *testing.T
 	router http.Handler
 	store  *memStore
+	jwt    *authjwt.Manager
+	redis  *redis.Client
+	mr     *miniredis.Miniredis
 }
 
 func newHarness(t *testing.T) *harness {
@@ -107,9 +237,11 @@ func newHarness(t *testing.T) *harness {
 	t.Cleanup(func() { _ = rdb.Close() })
 
 	store := newMemStore()
+	jwtMgr := authjwt.NewManager("test-secret-that-is-at-least-32-chars", time.Minute, time.Hour)
 	h, err := NewHandler(Deps{
 		Users: store,
-		JWT:   authjwt.NewManager("test-secret-that-is-at-least-32-chars", time.Minute, time.Hour),
+		Setup: store,
+		JWT:   jwtMgr,
 		Redis: rdb,
 	})
 	if err != nil {
@@ -117,7 +249,7 @@ func newHarness(t *testing.T) *harness {
 	}
 	r := chi.NewRouter()
 	r.Route("/api", h.Mount)
-	return &harness{t: t, router: r, store: store}
+	return &harness{t: t, router: r, store: store, jwt: jwtMgr, redis: rdb, mr: mr}
 }
 
 func (h *harness) do(method, path, bearer string, body any) *httptest.ResponseRecorder {
@@ -173,6 +305,9 @@ func TestRegister(t *testing.T) {
 	}
 	if got.Email != "ada@example.com" || got.Username != "ada" {
 		t.Errorf("stored %q / %q, want normalized ada@example.com / ada", got.Email, got.Username)
+	}
+	if got.Role != RoleUser {
+		t.Errorf("role = %q, want %q for a new account", got.Role, RoleUser)
 	}
 	if strings.Contains(rec.Body.String(), "password") {
 		t.Errorf("response leaks a password field: %s", rec.Body)
@@ -254,6 +389,27 @@ func TestMe(t *testing.T) {
 	if rec := h.do(http.MethodGet, "/api/auth/me", refresh, nil); rec.Code != http.StatusUnauthorized {
 		t.Errorf("refresh token as bearer: status %d, want 401", rec.Code)
 	}
+
+	t.Run("database fault is 503, not 404 or 401", func(t *testing.T) {
+		h.store.setFail(errors.New("db down"))
+		t.Cleanup(func() { h.store.setFail(nil) })
+		if rec := h.do(http.MethodGet, "/api/auth/me", access, nil); rec.Code != http.StatusServiceUnavailable {
+			t.Errorf("status %d, want 503 (body %s)", rec.Code, rec.Body)
+		}
+	})
+
+	t.Run("account gone is 404", func(t *testing.T) {
+		h.store.mu.Lock()
+		for id, u := range h.store.users {
+			if u.Email == "ada@example.com" {
+				delete(h.store.users, id)
+			}
+		}
+		h.store.mu.Unlock()
+		if rec := h.do(http.MethodGet, "/api/auth/me", access, nil); rec.Code != http.StatusNotFound {
+			t.Errorf("status %d, want 404 (body %s)", rec.Code, rec.Body)
+		}
+	})
 }
 
 func TestRefreshRotatesAndDetectsReuse(t *testing.T) {

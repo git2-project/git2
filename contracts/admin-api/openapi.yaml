@@ -7,8 +7,8 @@ info:
     `x-status: draft`: not implemented yet, and the shape may still change.
     Design notes: docs/design/identity-v0.md.
 
-    Reads need the `admin` or `auditor` instance role; writes need `admin`.
-    The role is read from the database on every request, so a change takes
+    Every operation needs the `admin` instance role (Requirements
+    Specification FR-08, UT-03). The role is read from the database on every request, so a change takes
     effect at once. Same conventions as auth-svc: `{"error": "..."}` bodies,
     unknown fields rejected, faults answer 5xx.
 
@@ -389,7 +389,7 @@ components:
 
     InstanceRole:
       type: string
-      enum: [admin, auditor, user]
+      enum: [admin, user]
 
     TeamRole:
       type: string

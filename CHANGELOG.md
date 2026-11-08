@@ -13,6 +13,10 @@ Every PR adds its lines under `## [Unreleased]`: one line per change, starting w
 - ci: `changelog` check: the PR touches `CHANGELOG.md` unless it has the `no-changelog` label (#20)
 - auth-svc: `POST /api/auth/register`, `/login`, `/refresh`, `/logout` and `GET /api/auth/me`; tokens in `X-Access-Token` / `X-Refresh-Token` headers, refresh sessions rotated in Redis, per-IP rate limits on the public routes
 - auth-svc: `RequireAuth` middleware and `UserID(ctx)` for other services
+- auth-svc: instance role on every user (`admin`, `user`; new accounts get `user`), returned as `role` by register, login and `/me`
+- auth-svc: role → permission table (`roles.go`) and `RequirePermission` middleware for admin routes; the role is read from the database on every request
+- auth-svc: `DisableUser` / `EnableUser` for admin-api: disabling ends every session of the user and makes `RequireAuth` reject their access tokens at once (`users.tokens_valid_after`, the refresh token's `sat` claim, a per-user session set and a `disabled:<uid>` marker in Redis); the last active admin cannot be disabled
+- auth-svc: first-admin setup: `GET /api/setup/status` and `POST /api/setup/admin` with a one-time setup token, printed once at startup or set with `GIT2_SETUP_TOKEN`, valid for one hour; a wrong token answers 403, a request after setup 409
 - internal: shared config, Postgres pool, Redis client, JWT (HS256), bcrypt, HTTP helpers and rate limiting
 - dev: devcontainer, `make run` / `tests` / `deps` / `build`, migration runner
 - gateway: one entry point (`cmd/gateway`): `/api` routed to git2 core after auth-svc's token check (`/api/auth/*` and `/api/setup/*` public), Dash and Admin served as static apps, client `X-Git2-*` / `X-Real-IP` / `X-Forwarded-*` headers replaced, `X-Request-Id`, `nosniff`, 30 s per API request (git2-deploy gateway contract v0.1)
@@ -28,11 +32,18 @@ Every PR adds its lines under `## [Unreleased]`: one line per change, starting w
 - docs: identity v0 design (roles, teams, first-admin setup) in `docs/design/identity-v0.md`
 - docs: README, project charter, project plan, team map, roadmap, this changelog
 
+### Changed
+- auth-svc: `RequireAuth` checks revocation and the disabled marker in one Redis round trip; it still fails open on a Redis fault
+- internal/jwt: token times (`iat`, `exp`, `nbf`) carry milliseconds, so a token issued in the same second as a disable is told apart
+
 ### Fixed
 - git2 core: per-IP rate limits see the client behind the gateway: `X-Real-IP` is used only on connections from `TRUSTED_PROXY_CIDRS` (`internal/realip`), never from anyone else (git2-deploy B-02)
 - auth-svc: `password_hash` stored as `text`; email and username enforced lowercase
+- auth-svc: `GET /api/auth/me` answers 503 on a database fault instead of 404
 - docs: Requirements Specification, Git Core: a push's `repo.pushed` event is written right after Git updates the refs, not in the same transaction (FR-04, US-03, UC-11); repository name and default-branch rules (FR-25, UC-10); Git sign-in with the password until PATs arrive in W6 (FR-27 note)
 - docs: Requirements Specification review: repository creation in SC-03 matches the Maintain rule of FR-25, persona introduction, FR-97 wording and numbering notes, dev-only `/api/auth/register` note (FR-20), bcrypt vs Argon2id deviation note (NFR-02), UC-12 flow order, missing actor links in the use case diagrams; Project Plan: student ID typo
 
 ### Database
 - `001_auth_users.sql`: `auth_svc` schema and `auth_svc.users`
+- `004_auth_roles_teams.sql`: `auth_svc.roles` (fixed list: admin, user, maintainer, member), `users.role` (default `user`), `auth_svc.teams`, `auth_svc.team_members`
+- `005_auth_setup_token.sql`: `auth_svc.setup_token`, the hash of the one-time first-admin setup token

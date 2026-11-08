@@ -62,8 +62,27 @@ func run(ctx context.Context, cfg *config.Config) error {
 	}
 	defer rdb.Close()
 
+	store := authsvc.NewPostgresStore(db)
+	setup, err := authsvc.PrepareSetup(ctx, store, cfg.SetupToken)
+	if err != nil {
+		return err
+	}
+	switch {
+	case setup.Done:
+	case setup.Token != "":
+		// Printed once: only its hash is stored.
+		slog.Warn("no admin yet: create the first one with POST /api/setup/admin and this one-time setup token",
+			"setup_token", setup.Token, "expires_at", setup.ExpiresAt)
+	case setup.Kept:
+		slog.Warn("no admin yet: the setup token printed by an earlier start is still valid; restart after it expires for a new one",
+			"expires_at", setup.ExpiresAt)
+	default:
+		slog.Info("no admin yet: setup token taken from GIT2_SETUP_TOKEN", "expires_at", setup.ExpiresAt)
+	}
+
 	auth, err := authsvc.NewHandler(authsvc.Deps{
-		Users: authsvc.NewPostgresStore(db),
+		Users: store,
+		Setup: store,
 		JWT:   authjwt.NewManager(cfg.JWTSecret, cfg.AccessTokenExpiry, cfg.RefreshTokenExpiry),
 		Redis: rdb,
 	})

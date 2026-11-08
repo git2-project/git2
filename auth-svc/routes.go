@@ -15,11 +15,19 @@ const (
 	loginLimit    = 20
 	logoutLimit   = 30
 	refreshLimit  = 60
+	setupLimit    = 10
 	publicWindow  = time.Minute
 )
 
-// Mount registers every /auth/* route on r.
+// Mount registers every /auth/* and /setup/* route on r.
 func (h *Handler) Mount(r chi.Router) {
+	if h.deps.Setup != nil {
+		r.Route("/setup", func(r chi.Router) {
+			r.Get("/status", h.SetupStatus)
+			r.With(ratelimit.ByIP(h.deps.Redis, "setup-admin", setupLimit, publicWindow)).Post("/admin", h.SetupAdmin)
+		})
+	}
+
 	r.Route("/auth", func(r chi.Router) {
 		rdb := h.deps.Redis
 		r.With(ratelimit.ByIP(rdb, "auth-register", registerLimit, publicWindow)).Post("/register", h.Register)

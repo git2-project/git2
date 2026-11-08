@@ -19,6 +19,8 @@ import (
 
 type Deps struct {
 	Users UserStore
+	// Setup backs /api/setup. When nil, those routes are not mounted.
+	Setup SetupStore
 	JWT   *authjwt.Manager
 	Redis *redis.Client
 }
@@ -158,6 +160,20 @@ func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, http.StatusServiceUnavailable, "could not refresh, try again")
 		return
 	}
+	var sessionStart time.Time
+	if claims.SessionStart != nil {
+		sessionStart = claims.SessionStart.Time
+	}
+	if sessionBeganBeforeDisable(u, sessionStart) {
+		// This covers sessions Redis never listed (from before the per-user
+		// set existed, or created by a sign-in racing the disable). Best
+		// effort: the refusal does not depend on the delete.
+		if err := deleteSession(r.Context(), h.deps.Redis, u.ID, sid); err != nil {
+			slog.Warn("refresh: delete session from before a disable", "err", err)
+		}
+		httpx.Error(w, http.StatusUnauthorized, "invalid or expired refresh token")
+		return
+	}
 
 	access, err := h.deps.JWT.IssueAccess(u.ID)
 	if err != nil {
@@ -165,7 +181,7 @@ func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, http.StatusInternalServerError, "could not issue token")
 		return
 	}
-	refresh, jti, err := h.deps.JWT.IssueRefresh(u.ID, sid)
+	refresh, jti, err := h.deps.JWT.IssueRefresh(u.ID, sid, sessionStart)
 	if err != nil {
 		slog.Error("issue refresh token", "err", err)
 		httpx.Error(w, http.StatusInternalServerError, "could not issue token")
@@ -175,7 +191,7 @@ func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
 	// The new JTI becomes the only valid one before the token is handed out,
 	// so a Redis failure can't leave the client holding a token the session
 	// won't recognise.
-	result, err := rotateSession(r.Context(), h.deps.Redis, sid, claims.ID, jti, h.deps.JWT.RefreshExpiry())
+	result, err := rotateSession(r.Context(), h.deps.Redis, u.ID, sid, claims.ID, jti, h.deps.JWT.RefreshExpiry())
 	if err != nil {
 		// Fail closed but retryable: the access token stays valid for its TTL,
 		// so a blip only delays rotation instead of signing the user out.
@@ -213,7 +229,7 @@ func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.RefreshToken != "" {
 		if claims, err := h.deps.JWT.Parse(req.RefreshToken, authjwt.PurposeRefresh); err == nil && claims.SessionID != "" {
-			if err := deleteSession(r.Context(), h.deps.Redis, claims.SessionID); err != nil {
+			if err := deleteSession(r.Context(), h.deps.Redis, claims.UserID, claims.SessionID); err != nil {
 				slog.Warn("logout: delete session", "err", err)
 			}
 		}
@@ -223,8 +239,14 @@ func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) Me(w http.ResponseWriter, r *http.Request) {
 	u, err := h.deps.Users.FindByID(r.Context(), UserID(r.Context()))
-	if err != nil {
+	switch {
+	case errors.Is(err, ErrNotFound):
 		httpx.Error(w, http.StatusNotFound, "user not found")
+		return
+	case err != nil:
+		// A database fault is neither "no such user" nor "signed out".
+		slog.Error("me: find user", "err", err)
+		httpx.Error(w, http.StatusServiceUnavailable, "could not load your account, try again")
 		return
 	}
 	httpx.JSON(w, http.StatusOK, toUserResponse(u))
@@ -235,11 +257,11 @@ func (h *Handler) Me(w http.ResponseWriter, r *http.Request) {
 // hand out a refresh token that could never be rotated.
 func (h *Handler) startSession(ctx context.Context, userID uuid.UUID) (string, error) {
 	sid := uuid.NewString()
-	refresh, jti, err := h.deps.JWT.IssueRefresh(userID, sid)
+	refresh, jti, err := h.deps.JWT.IssueRefresh(userID, sid, time.Now())
 	if err != nil {
 		return "", err
 	}
-	if err := storeSession(ctx, h.deps.Redis, sid, jti, h.deps.JWT.RefreshExpiry()); err != nil {
+	if err := storeSession(ctx, h.deps.Redis, userID, sid, jti, h.deps.JWT.RefreshExpiry()); err != nil {
 		return "", err
 	}
 	return refresh, nil
@@ -255,4 +277,14 @@ func (h *Handler) writeTokenHeaders(w http.ResponseWriter, access, refresh strin
 	w.Header().Set("X-Refresh-Token", refresh)
 	w.Header().Set("X-Access-Expires-In", strconv.FormatInt(int64(h.deps.JWT.AccessExpiry().Seconds()), 10))
 	w.Header().Set("Cache-Control", "no-store")
+}
+
+// sessionBeganBeforeDisable reports whether a session that began at start
+// (zero when the token predates the claim) began before the user was last
+// disabled, plus DisableGrace.
+func sessionBeganBeforeDisable(u User, start time.Time) bool {
+	if u.TokensValidAfter == nil {
+		return false
+	}
+	return !start.After(u.TokensValidAfter.Add(DisableGrace))
 }
