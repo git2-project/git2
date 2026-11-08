@@ -1208,7 +1208,8 @@ components:
             The hunks of this file's unified diff, starting at the first `@@` line. The
             `diff --git`, `index`, `---` and `+++` lines are not included; rebuild them from
             `old_path` and `new_path` if needed. Invalid UTF-8 bytes come back as U+FFFD.
-            Null for binary files and when `truncated` is true.
+            Null for binary files and when `truncated` is true. An empty string when only the
+            mode or the name changed (a rename without edits), since there are no hunks.
 
     Diff:
       type: object

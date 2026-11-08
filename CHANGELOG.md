@@ -35,6 +35,7 @@ Every PR adds its lines under `## [Unreleased]`: one line per change, starting w
 ### Changed
 - auth-svc: `RequireAuth` checks revocation and the disabled marker in one Redis round trip; it still fails open on a Redis fault
 - internal/jwt: token times (`iat`, `exp`, `nbf`) carry milliseconds, so a token issued in the same second as a disable is told apart
+- contracts: dash-api `FileDiff.patch` is an empty string, not null, when only the mode or the name changed (git2-codeplane ADR 0013 review)
 
 ### Fixed
 - git2 core: per-IP rate limits see the client behind the gateway: `X-Real-IP` is used only on connections from `TRUSTED_PROXY_CIDRS` (`internal/realip`), never from anyone else (git2-deploy B-02)
