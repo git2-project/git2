@@ -103,7 +103,7 @@ The requirements are grouped by Project Plan task. Each one is linked to the tas
 | FR-28 | T-05 | D-01 | The system shall allow clone and fetch only to users with at least the Read role on the repository, and push only to users with at least the Write role. A refusal is shown in the `git` client's error output. | Must | Integration tests with users of each role. The FR-16 matrix includes Git operations. |
 | FR-29 | T-05 | D-01 | The system shall let a standard `git` client clone, fetch and push over SSH with a key registered on the user's account (FR-19). The permission checks are the same as for HTTPS. | Could (optional, WBS-5.3) | `git clone ssh://…` and push succeed with a registered key and fail with an unknown key (WBS-5.3). |
 | FR-30 | T-06 | D-02 | The system shall show the file tree of any branch or tag of a repository, directories first, with a breadcrumb back to the root. It shows the content of a selected text file with syntax highlighting and line numbers. Selecting a line number gives a URL that links to that line. A binary file, a file over 1 MiB or a Git LFS file is shown with its size and a download link instead of its content. | Must | An E2E test opens files in several languages on two branches, follows a line link, and opens a binary, a 2 MiB and an LFS file (WBS-6.1). |
-| FR-97 | T-06 | D-02 | The system shall show a signed-in user the repositories of one owner that they can read, sorted by name, with name, owner and description. The owner is the user themselves unless they choose another user or organization. The next page of 50 is loaded when the user scrolls to the end. A repository the user cannot read is not listed, and its URL shows "not found". A single list across all owners, newest first, depends on how repository access and team grants are stored (dash-api contract, open question 3) and is not part of v0. | Must | UI and API test with a user who owns 60 repositories, and a second user with a repository the first cannot read: the first user's list loads two pages in name order, the second user's list does not show that repository, and its URL answers 404 (WBS-6.1). |
+| FR-97 | T-06 | D-02 | The system shall show a signed-in user the repositories of one owner that they can read, sorted by name, with name, owner and description. The owner is the user themselves unless they choose another user or organization. The next page of 50 is loaded when the user scrolls to the end. A repository the user cannot read is not listed, and its URL shows "not found". | Must | UI and API test with a user who owns 60 repositories, and a second user with a repository the first cannot read: the first user's list loads two pages in name order, the second user's list does not show that repository, and its URL answers 404 (WBS-6.1). |
 | FR-98 | T-06 | D-02 | When a repository has no commits yet, the system shall show its HTTPS clone URL with a copy button and the commands for a first push, instead of a file tree. | Should | UI test with a new, empty repository. After the shown commands are run, the page shows the file tree (WBS-6.1). |
 | FR-31 | T-06 | D-02 | The system shall show the commit history of a selected branch, directory or file, newest first, with each commit's title, author, date and short SHA. The history of a directory or file contains only the commits that changed it. For a selected commit, it shows the full message, author, date and parent commits, and the diff of each changed file with added and removed lines. When a commit changes more than 300 files, the page says that the list is truncated. | Must | An E2E test compares the commit list and one commit's diff with the `git log` and `git show` output of the same repository (WBS-6.1). |
 | FR-32 | T-06 | D-02 | The system shall list a repository's branches and tags, each with its latest commit, and let the user switch the branch or tag being browsed. | Must | UI test with a repository that has several branches and tags (WBS-6.1). |
@@ -176,6 +176,8 @@ The requirements are grouped by Project Plan task. Each one is linked to the tas
 
 - **Task coverage.** Every Project Plan task T-01–T-17 has at least one requirement above. T-18 (project management and project documentation) adds no system behavior, so it has no functional requirement. Its course reports and demo are covered by D-09 and by this document itself (WBS-18.4).
 - **Roles.** This document assumes three repository and organization roles: **Read**, **Write** and **Maintain**. It also assumes an instance-wide **administrator** flag on accounts. The Charter and the Plan require role-based permissions but do not name roles, so these names and the permission table in Section 3.1 are this document's proposal, to be confirmed in the Requirement Analysis Report. A role given on an organization applies to all of its repositories.
+- **Numbering.** FR-97 and FR-98 were added after the first numbering. They are listed under T-06, the task they belong to, and keep their numbers so that references to them stay stable.
+- **Repository list (FR-97).** The first version lists the repositories of one owner at a time. A single list across all owners, newest first, is left to the Requirement Analysis Report, because it depends on how repository access and team grants are stored.
 - **Ownership and scope of objects.** A repository is owned by a user or by an organization. A merge request is always between two branches of the same repository, because forks are not in the agreed scope.
 - **Optional scope.** FR-29, FR-33 and FR-63 are the Project Plan's optional activities, WBS-5.3, WBS-6.2 and WBS-10.6. The `search_code` tool of git2-mcp (FR-88) depends on FR-33: if WBS-6.2 is dropped, `search_code` returns a "not available" tool error instead of results.
 - **Reduction rule.** If the schedule slips, the Project Plan's risk R-16 contingency may reduce some features through a change request. For example, FR-42 could be reduced to one merge strategy, or FR-69 to a minimal health dashboard. Any such change is recorded as a new version of this document.
@@ -185,7 +187,7 @@ The requirements are grouped by Project Plan task. Each one is linked to the tas
   - Tokens are returned only in response headers.
   - A database or Redis fault is answered with 5xx, never with 401 (NFR-22).
 - **Sources beyond the Charter and the Plan.** Some details come from the team's merged artifacts:
-  - FR-09–FR-13 describe the auth-svc API that already runs.
+  - FR-09–FR-13 describe the auth-svc API that already runs. The development build also has an unauthenticated `POST /api/auth/register` endpoint, used only to create test accounts during development. It is removed from release builds, as FR-20 requires, and is therefore not in the FR-03 exempt list.
   - FR-25's naming rule comes from the git-svc schema (`migrations/002_git_repositories.sql`).
   - FR-54's label matching, FR-61's failure reasons and FR-62's CI secrets come from the `ci.v1` contract and the ci-svc schema (`migrations/003_ci_pipelines.sql`).
 - **Values not fixed here.** This document sets no access-token or refresh-token lifetimes, rate-limit sizes, registration-token expiry, job time limits or backup retention. These are configuration values. Their defaults are set in the Software Design Report.
@@ -241,7 +243,7 @@ The thresholds below are the ones agreed in Project Plan §1.4. Where the Plan g
   - A **clean host** is a Linux VM with Docker Engine and the Compose plugin, network access to GitHub Container Registry, and no earlier git2 data.
   - A **fresh server** for restore is a clean host as well.
 - **Agreed thresholds only.** The numbers in NFR-11–NFR-18 and NFR-29 come from Project Plan §1.4. No other threshold has been agreed, so availability targets and backup duration are not specified. The measurements are planned for W8 (k6, benchmarks, fault test, hallway test) and W9 (ASVS checklist).
-- **Password hashing.** Project Plan §1.4 names Argon2id. NFR-02 is written so that it can be verified independently of the algorithm. The final algorithm is recorded in the Software Design Report.
+- **Password hashing.** Project Plan §1.4 names Argon2id, but the current auth-svc implementation uses bcrypt. This is a deviation from the Plan and goes through the change control of WBS-18.2. NFR-02 is written so that it can be verified independently of the algorithm. The final algorithm is recorded in the Software Design Report.
 - **Supported environments.**
   - Server: Linux on amd64 or arm64, with Docker or with Kubernetes (tested on k3d and kind).
   - Runners: Linux hosts with Docker.
@@ -290,7 +292,7 @@ The thresholds below are the ones agreed in Project Plan §1.4. Where the Plan g
 
 ### 3.2 User Scenarios
 
-The scenarios follow the five personas below. All persons and organizations are fictional.
+A persona is a fictional but typical user, described in enough detail to make the scenarios concrete. Each persona below belongs to one or more of the user types in Section 3.1, and each scenario (SC-01–SC-13) tells a short story of one persona using git2. Deniz, Selin and Murat work at the same fictional bank, so several scenarios follow on from each other. All persons and organizations are fictional.
 
 | Persona ID | Name | User type | Background | Goals and concerns |
 |---|---|---|---|---|
@@ -310,13 +312,13 @@ The bank's security policy does not allow source code on external services, and 
 **Persona:** P-03 — Murat  
 **Related requirements:** FR-21, FR-23, FR-24, FR-15, FR-66, FR-67, FR-68, FR-96
 
-Next, Murat wants developers to use their existing company accounts. In the Admin plane Murat adds the bank's LDAP directory and tests the connection. Murat creates the organization `payments` with the team `Payments`, which gets the Write role on the organization. The LDAP group `payments-dev` is mapped to that team. Murat also connects the bank's OIDC provider for staff who already use single sign-on. To run builds, Murat creates a one-time runner registration token, installs git2-runner on a separate VM and registers it with the label `linux`. The runner shows as online in the runner list. Finally Murat opens the audit log and finds an entry for each of these actions, with Murat as the actor. The scenario ends with an instance ready for developers: identities come from the directory, team membership follows LDAP groups, and builds have a runner.
+Next, Murat wants developers to use their existing company accounts. In the Admin plane Murat adds the bank's LDAP directory and tests the connection. Murat creates the organization `payments` with the team `Payments`, which gets the Write role on the organization, and gives Selin, the team lead, the Maintain role on it. The LDAP group `payments-dev` is mapped to that team. Murat also connects the bank's OIDC provider for staff who already use single sign-on. To run builds, Murat creates a one-time runner registration token, installs git2-runner on a separate VM and registers it with the label `linux`. The runner shows as online in the runner list. Finally Murat opens the audit log and finds an entry for each of these actions, with Murat as the actor. The scenario ends with an instance ready for developers: identities come from the directory, team membership follows LDAP groups, and builds have a runner.
 
 **SC-03 — First sign-in, first repository and first push**  
-**Persona:** P-01 — Deniz  
+**Persona:** P-01 — Deniz (with P-02 — Selin)  
 **Related requirements:** FR-08, FR-23, FR-24, FR-25, FR-17, FR-27, FR-30–FR-32, FR-97, FR-98, FR-93
 
-Deniz opens git2 for the first time and signs in with the usual LDAP username and password. git2 creates Deniz's account and, because Deniz is in `payments-dev`, adds Deniz to the Payments team. Deniz creates the repository `payment-gateway` in the `payments` organization with the default branch `main`, and git2 shows the HTTPS clone URL and the first-push steps. Git over HTTPS needs a token, so Deniz creates a personal access token with the read-write scope, copies it (it is shown only once) and pushes the existing code with the normal `git` client. Back in Dash, Deniz browses the file tree, opens a Go file with syntax highlighting, switches to the `v2.2.0` tag and reads the history of `main`. Everything works as the user guide describes. If the optional SSH transport is delivered, Deniz could push with an SSH key instead. The scenario ends with the team's code hosted on the bank's own server.
+Deniz opens git2 for the first time and signs in with the usual LDAP username and password. git2 creates Deniz's account and, because Deniz is in `payments-dev`, adds Deniz to the Payments team. Selin, who has the Maintain role on the `payments` organization, has already created the empty repository `payment-gateway` there with the default branch `main`. When Deniz opens it, git2 shows the HTTPS clone URL and the first-push steps instead of a file tree. Git over HTTPS needs a token, so Deniz creates a personal access token with the read-write scope, copies it (it is shown only once) and pushes the existing code with the normal `git` client. Back in Dash, Deniz browses the file tree, opens a Go file with syntax highlighting, switches to the `v2.2.0` tag and reads the history of `main`. Everything works as the user guide describes. If the optional SSH transport is delivered, Deniz could push with an SSH key instead. The scenario ends with the team's code hosted on the bank's own server.
 
 **SC-04 — A pipeline on every push**  
 **Persona:** P-01 — Deniz  
@@ -530,18 +532,22 @@ flowchart LR
     Dev --> UC27
     Dev --> UC29
     Dev --> UC30
+    Lead --> UC04
     Lead --> UC10
     Lead --> UC14
     Lead --> UC17
     Lead --> UC18
     Lead --> UC19
+    Lead --> UC20
     Lead --> UC30
+    Admin --> UC04
     Admin --> UC03
     Admin --> UC05
     Admin --> UC07
     Admin --> UC23
     Admin --> UC24
     Admin --> UC25
+    Admin --> UC29
     Admin --> UC31
     Ops --> UC01
     Ops --> UC02
@@ -648,6 +654,7 @@ flowchart LR
 flowchart LR
     Dev["UT-01 Software developer<br/>(script author)"]
     Agent["UT-05 AI coding agent"]
+    Admin["UT-03 Instance administrator"]
     Ops["UT-04 Platform operator"]
 
     subgraph System["git2 — gateway, contracts and docs"]
@@ -662,6 +669,7 @@ flowchart LR
     Dev --> UC09
     Agent --> UC09
     Dev --> UC29
+    Admin --> UC29
     Ops --> UC29
     UC09 -.->|«include»| Limit
     UC09 -.->|«include»| Token
@@ -774,6 +782,7 @@ flowchart LR
     Lead --> UC19
     Dev --> UC19
     Dev --> UC20
+    Lead --> UC20
     Labels -.->|«extend»| UC19
     UC19 -.->|«include»| Mention
 ```
@@ -790,6 +799,7 @@ flowchart LR
 ```mermaid
 flowchart LR
     Dev["UT-01 Software developer"]
+    Lead["UT-02 Team lead / reviewer"]
     Admin["UT-03 Instance administrator"]
     Runner["UT-07 CI runner"]
     Store["UT-08 Object storage"]
@@ -809,6 +819,8 @@ flowchart LR
     Dev --> UC21
     Dev --> UC22
     Admin --> UC23
+    Lead --> Secrets
+    Admin --> Secrets
     UC21 -.->|«include»| Validate
     UC21 -.->|«include»| RunJob
     Cache -.->|«extend»| RunJob
@@ -825,7 +837,7 @@ flowchart LR
 
 - A push by the developer starts UC-21. The runner takes part as a supporting actor that executes each job in its own container (FR-55).
 - Validation of `.git2-ci.yml` is always included (FR-50, FR-52).
-- CI secrets (FR-62) and caching (FR-63, optional) extend a pipeline only when they are defined.
+- CI secrets (FR-62) and caching (FR-63, optional) extend a pipeline only when they are defined. Secrets are defined by a maintainer for one repository (UT-02) or by an administrator for the whole instance (UT-03).
 - Following a pipeline includes the live log (FR-56). It is extended by cancel and retry (FR-60) and uses object storage for artifacts (FR-57).
 - Runner registration (UC-23) belongs to the Admin plane but is shown here because no job can run without it.
 
@@ -1606,7 +1618,10 @@ Every development task from Project Plan §1.3 is covered. The optional items (F
 - **A1 — Empty repository (branches from step 2):**
   1. The repository has no commits yet.
   2. The system shows the clone URL and the first-push instructions instead of a file tree (FR-98).
-- **A2 — Binary or very large file (branches from step 6):**
+- **A2 — Search instead of browsing (branches from step 3):**
+  1. The developer searches the code (UC-13, optional).
+  2. The developer opens a result, and the flow continues at step 6 at the matching line.
+- **A3 — Binary or very large file (branches from step 6):**
   1. The file is binary, larger than 1 MiB or stored in Git LFS.
   2. The system shows its size and offers a download instead of a highlighted view (FR-30).
 - **A4 — Link to a line (branches from step 6):**
@@ -1615,9 +1630,6 @@ Every development task from Project Plan §1.3 is covered. The optional items (F
 - **A5 — History of a file or directory (branches from step 7):**
   1. The developer opens the history from a file or directory instead of the branch.
   2. The system lists only the commits that changed it (FR-31).
-- **A3 — Search instead of browsing (branches from step 3):**
-  1. The developer searches the code (UC-13, optional).
-  2. The developer opens a result, and the flow continues at step 6 at the matching line.
 
 **Exception / error flows (if applicable):**
 

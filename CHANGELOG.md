@@ -24,6 +24,7 @@ Every PR adds its lines under `## [Unreleased]`: one line per change, starting w
 ### Fixed
 - git2 core: per-IP rate limits see the client behind the gateway: `X-Real-IP` is used only on connections from `TRUSTED_PROXY_CIDRS` (`internal/realip`), never from anyone else (git2-deploy B-02)
 - auth-svc: `password_hash` stored as `text`; email and username enforced lowercase
+- docs: Requirements Specification review: repository creation in SC-03 matches the Maintain rule of FR-25, persona introduction, FR-97 wording and numbering notes, dev-only `/api/auth/register` note (FR-20), bcrypt vs Argon2id deviation note (NFR-02), UC-12 flow order, missing actor links in the use case diagrams; Project Plan: student ID typo
 
 ### Database
 - `001_auth_users.sql`: `auth_svc` schema and `auth_svc.users`
