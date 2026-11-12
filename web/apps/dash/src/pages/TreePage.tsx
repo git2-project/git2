@@ -70,17 +70,19 @@ function TreeView({ name, gitRef, tree }: { name: RepoName; gitRef: string; tree
             )}
             {tree.entries.map((e) => (
               <tr key={e.path}>
-                <td className="dash-tree-name">
-                  <EntryIcon type={e.type} />
-                  {e.type === "dir" ? (
-                    <Link to={treeLink(name, gitRef, e.path)}>{e.name}</Link>
-                  ) : e.type === "submodule" ? (
-                    <span title="Submodules cannot be browsed">
-                      {e.name} <span className="g2-muted">@ {e.sha.slice(0, 7)}</span>
-                    </span>
-                  ) : (
-                    <Link to={blobLink(name, gitRef, e.path)}>{e.name}</Link>
-                  )}
+                <td>
+                  <div className="dash-tree-name">
+                    <EntryIcon type={e.type} />
+                    {e.type === "dir" ? (
+                      <Link to={treeLink(name, gitRef, e.path)}>{e.name}</Link>
+                    ) : e.type === "submodule" ? (
+                      <span title="Submodules cannot be browsed">
+                        {e.name} <span className="g2-muted">@ {e.sha.slice(0, 7)}</span>
+                      </span>
+                    ) : (
+                      <Link to={blobLink(name, gitRef, e.path)}>{e.name}</Link>
+                    )}
+                  </div>
                 </td>
                 <td className="g2-muted dash-tree-size">{e.size != null ? fileSize(e.size) : ""}</td>
               </tr>

@@ -9,7 +9,11 @@ export function Breadcrumb({ name, gitRef, path }: { name: RepoName; gitRef: str
   const parts = path ? path.split("/") : [];
   return (
     <nav className="dash-breadcrumb" aria-label="Path">
-      <Link to={treeLink(name, gitRef)}>{name.repo}</Link>
+      {parts.length === 0 ? (
+        <strong aria-current="page">{name.repo}</strong>
+      ) : (
+        <Link to={treeLink(name, gitRef)}>{name.repo}</Link>
+      )}
       {parts.map((part, i) => {
         const last = i === parts.length - 1;
         return (

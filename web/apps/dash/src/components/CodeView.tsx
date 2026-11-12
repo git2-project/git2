@@ -6,14 +6,16 @@ import { MAX_HIGHLIGHT_BYTES, MAX_HIGHLIGHT_LINES, highlight } from "../lib/high
 // the highlighted one replaces it when Shiki is ready.
 export function CodeView({ code, language }: { code: string; language?: string | null }) {
   const [html, setHtml] = useState<string | null>(null);
-  const lines = code.endsWith("\n") ? code.slice(0, -1).split("\n") : code.split("\n");
+  // A file's final newline ends its last line; it does not start a new one.
+  const text = code.endsWith("\n") ? code.slice(0, -1) : code;
+  const lines = text.split("\n");
   const tooBig = code.length > MAX_HIGHLIGHT_BYTES || lines.length > MAX_HIGHLIGHT_LINES;
 
   useEffect(() => {
     setHtml(null);
     if (!language || tooBig) return;
     let live = true;
-    highlight(code, language).then(
+    highlight(text, language).then(
       (out) => {
         if (live) setHtml(out);
       },
@@ -24,7 +26,7 @@ export function CodeView({ code, language }: { code: string; language?: string |
     return () => {
       live = false;
     };
-  }, [code, language, tooBig]);
+  }, [text, language, tooBig]);
 
   if (html) {
     // Shiki escapes the code; the HTML holds only its own spans.

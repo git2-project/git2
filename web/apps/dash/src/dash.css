@@ -90,6 +90,17 @@
   border-radius: var(--g2-radius);
 }
 
+/* A link styled as a button (Browse files) reads as a button, not a link. */
+a.g2-button {
+  display: inline-block;
+  color: var(--g2-text);
+  text-decoration: none;
+}
+
+a.g2-button:hover {
+  background: var(--dash-row-hover);
+}
+
 .dash-actions {
   display: inline-flex;
   flex-wrap: wrap;
@@ -191,15 +202,17 @@
 
 .dash-clone {
   display: flex;
-  align-items: center;
+  align-items: stretch;
   gap: 6px;
   min-width: 0;
   max-width: 100%;
 }
 
 .dash-clone code {
+  display: flex;
+  align-items: center;
   min-width: 0;
-  padding: 7px 10px;
+  padding: 0 10px;
   overflow: hidden;
   font: 13px var(--dash-mono);
   text-overflow: ellipsis;
@@ -552,7 +565,7 @@
 
 .dash-commit-body {
   margin: 0;
-  padding: 0 16px 12px;
+  padding: 12px 16px;
   font: 13px/1.5 var(--dash-mono);
   white-space: pre-wrap;
   word-break: break-word;
@@ -593,8 +606,6 @@
 
 .dash-file-diff .dash-box-header {
   justify-content: flex-start;
-  position: sticky;
-  top: 0;
 }
 
 .dash-diff-path {
@@ -634,6 +645,7 @@
   min-width: 100%;
   font: 12.5px/1.55 var(--dash-mono);
   border-collapse: collapse;
+  tab-size: 4;
 }
 
 .dash-diff td {

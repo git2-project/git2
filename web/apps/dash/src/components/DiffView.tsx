@@ -40,7 +40,9 @@ export function FileDiffView({ name, sha, file }: { name: RepoName; sha: string;
             path
           )}
         </span>
-        <DiffCounts additions={file.additions} deletions={file.deletions} />
+        {(file.additions > 0 || file.deletions > 0) && (
+          <DiffCounts additions={file.additions} deletions={file.deletions} />
+        )}
         {file.status !== "deleted" && (
           <Link to={blobLink(name, sha, path)} className="dash-nowrap">
             View file
