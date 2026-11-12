@@ -1075,6 +1075,42 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
+                    /**
+                     * @example {
+                     *       "repositories": [
+                     *         {
+                     *           "id": "6f0b8c1e-3d2a-4f5b-9c7d-1e2f3a4b5c6d",
+                     *           "owner": {
+                     *             "id": "497f6eca-6276-4993-bfeb-53cbbbba6f08",
+                     *             "name": "ada",
+                     *             "kind": "user"
+                     *           },
+                     *           "name": "billing-service",
+                     *           "full_name": "ada/billing-service",
+                     *           "description": "Invoices, payments and the monthly billing run.",
+                     *           "default_branch": "main",
+                     *           "clone_url": "https://git2.example.com/ada/billing-service.git",
+                     *           "created_at": "2026-10-20T09:12:00Z",
+                     *           "updated_at": "2026-10-20T09:12:00Z"
+                     *         },
+                     *         {
+                     *           "id": "7a1c9d2f-4e3b-4a6c-8d9e-2f3a4b5c6d7e",
+                     *           "owner": {
+                     *             "id": "497f6eca-6276-4993-bfeb-53cbbbba6f08",
+                     *             "name": "ada",
+                     *             "kind": "user"
+                     *           },
+                     *           "name": "web-shop",
+                     *           "full_name": "ada/web-shop",
+                     *           "description": "Storefront and checkout.",
+                     *           "default_branch": "main",
+                     *           "clone_url": "https://git2.example.com/ada/web-shop.git",
+                     *           "created_at": "2026-10-20T09:12:00Z",
+                     *           "updated_at": "2026-10-20T09:12:00Z"
+                     *         }
+                     *       ]
+                     *     }
+                     */
                     "application/json": {
                         repositories: components["schemas"]["Repository"][];
                         next_page_token?: components["schemas"]["NextPageToken"];
@@ -1142,6 +1178,23 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
+                    /**
+                     * @example {
+                     *       "id": "6f0b8c1e-3d2a-4f5b-9c7d-1e2f3a4b5c6d",
+                     *       "owner": {
+                     *         "id": "497f6eca-6276-4993-bfeb-53cbbbba6f08",
+                     *         "name": "ada",
+                     *         "kind": "user"
+                     *       },
+                     *       "name": "billing-service",
+                     *       "full_name": "ada/billing-service",
+                     *       "description": "Invoices, payments and the monthly billing run.",
+                     *       "default_branch": "main",
+                     *       "clone_url": "https://git2.example.com/ada/billing-service.git",
+                     *       "created_at": "2026-10-20T09:12:00Z",
+                     *       "updated_at": "2026-10-20T09:12:00Z"
+                     *     }
+                     */
                     "application/json": components["schemas"]["Repository"];
                 };
             };
@@ -1201,6 +1254,32 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
+                    /**
+                     * @example {
+                     *       "branches": [
+                     *         {
+                     *           "name": "main",
+                     *           "commit": {
+                     *             "sha": "4bdc5531f0e2a7d9c6b8e3f1a2d4c6b8e0f1a3c5",
+                     *             "title": "Round invoice totals to the cent",
+                     *             "committed_at": "2026-11-12T16:40:00Z"
+                     *           },
+                     *           "default": true,
+                     *           "protected": false
+                     *         },
+                     *         {
+                     *           "name": "feature/payment-retries",
+                     *           "commit": {
+                     *             "sha": "9e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f",
+                     *             "title": "Retry failed card payments",
+                     *             "committed_at": "2026-11-11T11:05:00Z"
+                     *           },
+                     *           "default": false,
+                     *           "protected": false
+                     *         }
+                     *       ]
+                     *     }
+                     */
                     "application/json": {
                         branches: components["schemas"]["Branch"][];
                         next_page_token?: components["schemas"]["NextPageToken"];
@@ -1236,6 +1315,30 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
+                    /**
+                     * @example {
+                     *       "tags": [
+                     *         {
+                     *           "name": "v1.2.0",
+                     *           "commit": {
+                     *             "sha": "4bdc5531f0e2a7d9c6b8e3f1a2d4c6b8e0f1a3c5",
+                     *             "title": "Round invoice totals to the cent",
+                     *             "committed_at": "2026-11-12T16:40:00Z"
+                     *           },
+                     *           "message": "Billing 1.2: rounding fixes"
+                     *         },
+                     *         {
+                     *           "name": "v1.1.0",
+                     *           "commit": {
+                     *             "sha": "1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b",
+                     *             "title": "Add invoice PDFs",
+                     *             "committed_at": "2026-11-01T10:00:00Z"
+                     *           },
+                     *           "message": null
+                     *         }
+                     *       ]
+                     *     }
+                     */
                     "application/json": {
                         tags: components["schemas"]["Tag"][];
                         next_page_token?: components["schemas"]["NextPageToken"];
@@ -1277,6 +1380,70 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
+                    /**
+                     * @example {
+                     *       "ref": "main",
+                     *       "commit_sha": "4bdc5531f0e2a7d9c6b8e3f1a2d4c6b8e0f1a3c5",
+                     *       "path": "",
+                     *       "empty": false,
+                     *       "truncated": false,
+                     *       "last_commit": {
+                     *         "sha": "4bdc5531f0e2a7d9c6b8e3f1a2d4c6b8e0f1a3c5",
+                     *         "title": "Round invoice totals to the cent",
+                     *         "committed_at": "2026-11-12T16:40:00Z"
+                     *       },
+                     *       "entries": [
+                     *         {
+                     *           "name": "cmd",
+                     *           "path": "cmd",
+                     *           "type": "dir",
+                     *           "mode": "040000",
+                     *           "sha": "2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c",
+                     *           "size": null
+                     *         },
+                     *         {
+                     *           "name": "internal",
+                     *           "path": "internal",
+                     *           "type": "dir",
+                     *           "mode": "040000",
+                     *           "sha": "3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d",
+                     *           "size": null
+                     *         },
+                     *         {
+                     *           "name": ".gitignore",
+                     *           "path": ".gitignore",
+                     *           "type": "file",
+                     *           "mode": "100644",
+                     *           "sha": "4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e",
+                     *           "size": 42
+                     *         },
+                     *         {
+                     *           "name": "README.md",
+                     *           "path": "README.md",
+                     *           "type": "file",
+                     *           "mode": "100644",
+                     *           "sha": "5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f",
+                     *           "size": 612
+                     *         },
+                     *         {
+                     *           "name": "go.mod",
+                     *           "path": "go.mod",
+                     *           "type": "file",
+                     *           "mode": "100644",
+                     *           "sha": "6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a",
+                     *           "size": 96
+                     *         },
+                     *         {
+                     *           "name": "invoice.go",
+                     *           "path": "invoice.go",
+                     *           "type": "file",
+                     *           "mode": "100644",
+                     *           "sha": "7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b",
+                     *           "size": 1840
+                     *         }
+                     *       ]
+                     *     }
+                     */
                     "application/json": components["schemas"]["Tree"];
                 };
             };
@@ -1329,6 +1496,20 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
+                    /**
+                     * @example {
+                     *       "ref": "main",
+                     *       "commit_sha": "4bdc5531f0e2a7d9c6b8e3f1a2d4c6b8e0f1a3c5",
+                     *       "path": "README.md",
+                     *       "name": "README.md",
+                     *       "size": 612,
+                     *       "binary": false,
+                     *       "lfs": false,
+                     *       "truncated": false,
+                     *       "language": "markdown",
+                     *       "content": "# billing-service\n\nInvoices, payments and the monthly billing run for the web shop.\n\n## Running it\n\n```sh\ngo run ./cmd/billing -config billing.yaml\n```\n\n## Rounding\n\nTotals are rounded to the cent with banker's rounding, once per invoice,\nnever per line. See `invoice.go`.\n"
+                     *     }
+                     */
                     "application/json": components["schemas"]["Blob"];
                 };
             };
@@ -1455,6 +1636,94 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
+                    /**
+                     * @example {
+                     *       "commits": [
+                     *         {
+                     *           "sha": "4bdc5531f0e2a7d9c6b8e3f1a2d4c6b8e0f1a3c5",
+                     *           "short_sha": "4bdc553",
+                     *           "title": "Round invoice totals to the cent",
+                     *           "message": "Round invoice totals to the cent\n\nRounding per line drifted by up to a cent on long invoices.",
+                     *           "author": {
+                     *             "name": "Ada Lovelace",
+                     *             "email": "ada@example.com",
+                     *             "date": "2026-11-12T16:40:00Z",
+                     *             "user": {
+                     *               "id": "497f6eca-6276-4993-bfeb-53cbbbba6f08",
+                     *               "username": "ada"
+                     *             }
+                     *           },
+                     *           "committer": {
+                     *             "name": "Ada Lovelace",
+                     *             "email": "ada@example.com",
+                     *             "date": "2026-11-12T16:40:00Z",
+                     *             "user": {
+                     *               "id": "497f6eca-6276-4993-bfeb-53cbbbba6f08",
+                     *               "username": "ada"
+                     *             }
+                     *           },
+                     *           "parent_shas": [
+                     *             "9e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f"
+                     *           ]
+                     *         },
+                     *         {
+                     *           "sha": "9e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f",
+                     *           "short_sha": "9e1f2a3",
+                     *           "title": "Retry failed card payments",
+                     *           "message": "Retry failed card payments",
+                     *           "author": {
+                     *             "name": "Ada Lovelace",
+                     *             "email": "ada@example.com",
+                     *             "date": "2026-11-11T11:05:00Z",
+                     *             "user": {
+                     *               "id": "497f6eca-6276-4993-bfeb-53cbbbba6f08",
+                     *               "username": "ada"
+                     *             }
+                     *           },
+                     *           "committer": {
+                     *             "name": "Ada Lovelace",
+                     *             "email": "ada@example.com",
+                     *             "date": "2026-11-11T11:05:00Z",
+                     *             "user": {
+                     *               "id": "497f6eca-6276-4993-bfeb-53cbbbba6f08",
+                     *               "username": "ada"
+                     *             }
+                     *           },
+                     *           "parent_shas": [
+                     *             "1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b"
+                     *           ]
+                     *         },
+                     *         {
+                     *           "sha": "1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b",
+                     *           "short_sha": "1a2b3c4",
+                     *           "title": "Add invoice PDFs",
+                     *           "message": "Add invoice PDFs",
+                     *           "author": {
+                     *             "name": "Ada Lovelace",
+                     *             "email": "ada@example.com",
+                     *             "date": "2026-11-01T10:00:00Z",
+                     *             "user": {
+                     *               "id": "497f6eca-6276-4993-bfeb-53cbbbba6f08",
+                     *               "username": "ada"
+                     *             }
+                     *           },
+                     *           "committer": {
+                     *             "name": "Ada Lovelace",
+                     *             "email": "ada@example.com",
+                     *             "date": "2026-11-01T10:00:00Z",
+                     *             "user": {
+                     *               "id": "497f6eca-6276-4993-bfeb-53cbbbba6f08",
+                     *               "username": "ada"
+                     *             }
+                     *           },
+                     *           "parent_shas": [
+                     *             "0f1e2d3c4b5a69788796a5b4c3d2e1f0a9b8c7d6"
+                     *           ]
+                     *         }
+                     *       ],
+                     *       "next_page_token": "eyJjIjoiMWEyYjNjNGQiLCJzIjozfQ"
+                     *     }
+                     */
                     "application/json": {
                         commits: components["schemas"]["Commit"][];
                         next_page_token?: components["schemas"]["NextPageToken"];
@@ -1488,6 +1757,73 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
+                    /**
+                     * @example {
+                     *       "sha": "4bdc5531f0e2a7d9c6b8e3f1a2d4c6b8e0f1a3c5",
+                     *       "short_sha": "4bdc553",
+                     *       "title": "Round invoice totals to the cent",
+                     *       "message": "Round invoice totals to the cent\n\nRounding per line drifted by up to a cent on long invoices.",
+                     *       "author": {
+                     *         "name": "Ada Lovelace",
+                     *         "email": "ada@example.com",
+                     *         "date": "2026-11-12T16:40:00Z",
+                     *         "user": {
+                     *           "id": "497f6eca-6276-4993-bfeb-53cbbbba6f08",
+                     *           "username": "ada"
+                     *         }
+                     *       },
+                     *       "committer": {
+                     *         "name": "Ada Lovelace",
+                     *         "email": "ada@example.com",
+                     *         "date": "2026-11-12T16:40:00Z",
+                     *         "user": {
+                     *           "id": "497f6eca-6276-4993-bfeb-53cbbbba6f08",
+                     *           "username": "ada"
+                     *         }
+                     *       },
+                     *       "parent_shas": [
+                     *         "9e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f"
+                     *       ],
+                     *       "stats": {
+                     *         "files_changed": 3,
+                     *         "additions": 3,
+                     *         "deletions": 2
+                     *       },
+                     *       "truncated": false,
+                     *       "files": [
+                     *         {
+                     *           "status": "modified",
+                     *           "old_path": "invoice.go",
+                     *           "new_path": "invoice.go",
+                     *           "additions": 3,
+                     *           "deletions": 2,
+                     *           "binary": false,
+                     *           "truncated": false,
+                     *           "patch": "@@ -12,8 +12,9 @@ type Invoice struct {\n // Total returns the sum of the lines, rounded once to the cent.\n func (inv *Invoice) Total() Money {\n \tvar sum Money\n \tfor _, l := range inv.Lines {\n-\t\tsum += l.Amount.Round()\n+\t\tsum += l.Amount\n \t}\n-\treturn sum\n+\t// Round once per invoice: rounding each line drifts on long invoices.\n+\treturn sum.RoundHalfEven()\n }\n"
+                     *         },
+                     *         {
+                     *           "status": "renamed",
+                     *           "old_path": "docs/rounding.txt",
+                     *           "new_path": "docs/rounding.md",
+                     *           "additions": 0,
+                     *           "deletions": 0,
+                     *           "binary": false,
+                     *           "truncated": false,
+                     *           "patch": ""
+                     *         },
+                     *         {
+                     *           "status": "added",
+                     *           "old_path": null,
+                     *           "new_path": "testdata/long-invoice.pdf",
+                     *           "additions": 0,
+                     *           "deletions": 0,
+                     *           "binary": true,
+                     *           "truncated": false,
+                     *           "patch": null
+                     *         }
+                     *       ]
+                     *     }
+                     */
                     "application/json": components["schemas"]["CommitDetail"];
                 };
             };
