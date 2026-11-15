@@ -48,3 +48,4 @@ Every PR adds its lines under `## [Unreleased]`: one line per change, starting w
 - `001_auth_users.sql`: `auth_svc` schema and `auth_svc.users`
 - `004_auth_roles_teams.sql`: `auth_svc.roles` (fixed list: admin, user, maintainer, member), `users.role` (default `user`), `auth_svc.teams`, `auth_svc.team_members`
 - `005_auth_setup_token.sql`: `auth_svc.setup_token`, the hash of the one-time first-admin setup token
+- `006_ci_inbox_and_attempts.sql`: job attempts in `ci_svc.jobs` (`attempt`, `retry_of`, `idempotency_key`, `triggered_by`) for ci-svc's `RetryJob`, and `ci_svc.inbox` for events delivered to ci-svc's `EventSink` (git2-runner #16, ADR 0010) (#34)
