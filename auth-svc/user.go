@@ -62,12 +62,18 @@ func validateEmail(s string) error {
 // user's page lives at /<username>, so a user with one of these names would
 // collide with them. The list is the gateway contract's (git2-deploy
 // docs/api/gateway.md, assumption B-05) plus the Dash routes /sign-in and
-// /register. Organizations share the name space and will use the same list.
+// /register, plus names Dash is likely to need at the top level later
+// (dashboard, notifications, orgs, repos, search, users): refusing them now
+// is cheaper than renaming someone's account then. Organizations share the
+// name space and will use the same list.
 var reservedNames = map[string]bool{
 	"admin": true, "api": true, "assets": true, "explore": true,
 	"healthz": true, "login": true, "logout": true, "new": true,
 	"readyz": true, "register": true, "settings": true, "sign-in": true,
 	"static": true,
+	// Reserved ahead of Dash routes.
+	"dashboard": true, "notifications": true, "orgs": true, "repos": true,
+	"search": true, "users": true,
 }
 
 func validateUsername(s string) error {

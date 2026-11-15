@@ -7,11 +7,13 @@ import (
 )
 
 func TestValidateUsernameReserved(t *testing.T) {
-	// The gateway contract's list (B-05) plus the Dash routes.
+	// The gateway contract's list (B-05), the Dash routes, and the names
+	// reserved ahead of Dash routes.
 	reserved := []string{
 		"api", "admin", "healthz", "readyz", "assets", "static",
 		"login", "logout", "settings", "explore", "new",
 		"sign-in", "register",
+		"dashboard", "notifications", "orgs", "repos", "search", "users",
 	}
 	if len(reserved) != len(reservedNames) {
 		t.Errorf("reservedNames has %d names, this test %d: keep them in step", len(reservedNames), len(reserved))
