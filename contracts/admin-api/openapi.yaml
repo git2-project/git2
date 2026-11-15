@@ -127,6 +127,11 @@ paths:
 
         Usernames cannot be changed in v0: they are part of repository URLs
         (`/<owner>/<repo>`), so a rename needs redirects that do not exist yet.
+
+        The email and role change is saved before enabling or disabling, and
+        the two steps are not one transaction. After a 5xx, part of the change
+        may already be saved: read the user again before showing its state.
+        Repeating the request is safe.
       requestBody:
         required: true
         content:
