@@ -6,6 +6,7 @@ package config
 import (
 	"fmt"
 	"net/netip"
+	"net/url"
 	"os"
 	"strconv"
 	"time"
@@ -38,6 +39,14 @@ type Config struct {
 	// TrustedProxies are the addresses whose X-Real-IP is believed: the
 	// gateway (TRUSTED_PROXY_CIDRS). Empty means none.
 	TrustedProxies []netip.Prefix
+
+	// SecretKey (GIT2_SECRET_KEY) encrypts the secrets kept in the database,
+	// such as OIDC client secrets (internal/secretbox). Empty: OIDC is off.
+	SecretKey string
+	// ExternalURL (GIT2_EXTERNAL_URL) is the address users type,
+	// scheme://host[:port], used to build OIDC redirect URIs. Nil: OIDC is
+	// off.
+	ExternalURL *url.URL
 }
 
 func Load() (*Config, error) {
@@ -51,6 +60,7 @@ func Load() (*Config, error) {
 		RedisPassword: os.Getenv("REDIS_PASSWORD"),
 		JWTSecret:     os.Getenv("JWT_SECRET"),
 		SetupToken:    os.Getenv("GIT2_SETUP_TOKEN"),
+		SecretKey:     os.Getenv("GIT2_SECRET_KEY"),
 	}
 
 	maxConns, err := strconv.Atoi(getenv("POSTGRES_MAX_CONNS", "10"))
@@ -68,6 +78,15 @@ func Load() (*Config, error) {
 
 	if cfg.TrustedProxies, err = realip.ParsePrefixes(os.Getenv("TRUSTED_PROXY_CIDRS")); err != nil {
 		return nil, fmt.Errorf("TRUSTED_PROXY_CIDRS: %w", err)
+	}
+
+	if v := os.Getenv("GIT2_EXTERNAL_URL"); v != "" {
+		u, err := url.Parse(v)
+		if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" || (u.Path != "" && u.Path != "/") || u.RawQuery != "" {
+			return nil, fmt.Errorf("GIT2_EXTERNAL_URL must be scheme://host[:port], got %q", v)
+		}
+		u.Path = ""
+		cfg.ExternalURL = u
 	}
 
 	if maxConns < 1 || maxConns > 1000 {

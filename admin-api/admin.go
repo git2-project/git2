@@ -1,6 +1,6 @@
 // Package adminapi is git2's admin plane API (contracts/admin-api). Every
-// route needs the admin instance role; the accounts and teams themselves
-// live in auth-svc, which owns the auth_svc schema.
+// route needs the admin instance role; the accounts, teams and OIDC
+// providers themselves live in auth-svc, which owns the auth_svc schema.
 package adminapi
 
 import (
@@ -17,8 +17,12 @@ import (
 )
 
 type Deps struct {
-	Users UserStore
-	Teams TeamStore
+	Users         UserStore
+	Teams         TeamStore
+	OIDCProviders OIDCProviderStore
+	// OIDC holds GIT2_SECRET_KEY and GIT2_EXTERNAL_URL; providers cannot be
+	// saved without them.
+	OIDC  authsvc.OIDCSettings
 	JWT   *authjwt.Manager
 	Redis *redis.Client
 }
@@ -52,6 +56,12 @@ func (h *Handler) Mount(r chi.Router) {
 		r.With(read).Get("/teams/{team_id}/members", h.ListTeamMembers)
 		r.With(write).Put("/teams/{team_id}/members/{user_id}", h.PutTeamMember)
 		r.With(write).Delete("/teams/{team_id}/members/{user_id}", h.DeleteTeamMember)
+
+		r.With(read).Get("/oidc-providers", h.ListOIDCProviders)
+		r.With(write).Post("/oidc-providers", h.CreateOIDCProvider)
+		r.With(read).Get("/oidc-providers/{provider_id}", h.GetOIDCProvider)
+		r.With(write).Patch("/oidc-providers/{provider_id}", h.UpdateOIDCProvider)
+		r.With(write).Delete("/oidc-providers/{provider_id}", h.DeleteOIDCProvider)
 	})
 }
 

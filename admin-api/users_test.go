@@ -31,8 +31,9 @@ type memStore struct {
 	teams   []authsvc.Team
 	members map[uuid.UUID]map[uuid.UUID]authsvc.TeamMember
 	// fail, when set, is returned by every call to simulate a database fault.
-	fail error
-	// teamFail, when set, is returned by the team calls only.
+	fail      error
+	providers []authsvc.OIDCProvider
+	// teamFail, when set, is returned by the team and provider calls only.
 	teamFail error
 	// lastAdmin, when set, is treated as the last active admin, as if
 	// another admin had just been removed concurrently.
@@ -211,6 +212,9 @@ type harness struct {
 	store  *memStore
 	jwt    *authjwt.Manager
 	mr     *miniredis.Miniredis
+	redis  *redis.Client
+	// oidc has a fresh key and https://git.example.test; setOIDC changes it.
+	oidc authsvc.OIDCSettings
 	// admin is a signed-in active admin; adminToken is their access token.
 	admin      authsvc.User
 	adminToken string
@@ -227,19 +231,29 @@ func newHarness(t *testing.T) *harness {
 		store: newMemStore(),
 		jwt:   authjwt.NewManager("test-secret-that-is-at-least-32-chars", time.Minute, time.Hour),
 		mr:    mr,
+		redis: rdb,
 	}
-	r := chi.NewRouter()
-	r.Route("/api", NewHandler(Deps{Users: h.store, Teams: h.store, JWT: h.jwt, Redis: rdb}).Mount)
-	// A route behind RequireAuth only, like every Dash route: it reads no
-	// database, so it sees a disable only through the Redis marker.
-	r.With(authsvc.RequireAuth(h.jwt, rdb)).Get("/api/dash-probe", func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusNoContent)
-	})
-	h.router = r
+	h.setOIDC(oidcSettings(t))
 
 	h.admin = h.addUser("root@example.com", "root", authsvc.RoleAdmin)
 	h.adminToken = h.token(h.admin.ID)
 	return h
+}
+
+// setOIDC rebuilds the router with these OIDC settings.
+func (h *harness) setOIDC(s authsvc.OIDCSettings) {
+	h.oidc = s
+	r := chi.NewRouter()
+	r.Route("/api", NewHandler(Deps{
+		Users: h.store, Teams: h.store, OIDCProviders: h.store, OIDC: s,
+		JWT: h.jwt, Redis: h.redis,
+	}).Mount)
+	// A route behind RequireAuth only, like every Dash route: it reads no
+	// database, so it sees a disable only through the Redis marker.
+	r.With(authsvc.RequireAuth(h.jwt, h.redis)).Get("/api/dash-probe", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	})
+	h.router = r
 }
 
 func (h *harness) addUser(email, username string, role authsvc.Role) authsvc.User {

@@ -14,7 +14,7 @@
 |---|---|---|
 | Users: list, create, get, update, enable and disable | Implemented (`admin-api/users.go`) | Admin console, WBS-3.1, W3 |
 | Roles, teams, team members | Implemented (`admin-api/teams.go`) | Admin console, WBS-3.1, W3 |
-| OIDC providers (`/admin/oidc-providers`) | Draft (`x-status: draft`), see [`docs/design/oidc-v0.md`](../../docs/design/oidc-v0.md) | Admin console, WBS-4.1, W4 |
+| OIDC providers (`/admin/oidc-providers`) | Implemented (`admin-api/oidc.go`), see [`docs/design/oidc-v0.md`](../../docs/design/oidc-v0.md) | Admin console, WBS-4.1, W4 |
 | Organizations | Not written yet | dash-api owners (`/repos/{owner}/...`), WBS-3.1 |
 
 ## Rules

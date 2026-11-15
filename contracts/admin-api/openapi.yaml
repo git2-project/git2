@@ -4,9 +4,8 @@ info:
   version: 0.1.0-draft
   description: |
     The admin plane: users, roles and teams (WBS-3.1), and the OIDC
-    providers for single sign-on (WBS-4.1). Operations marked
-    `x-status: draft` are not implemented yet, and their shape may still
-    change. Design notes: docs/design/identity-v0.md and
+    providers for single sign-on (WBS-4.1). Every operation is implemented.
+    Design notes: docs/design/identity-v0.md and
     docs/design/oidc-v0.md.
 
     Every operation needs the `admin` instance role (Requirements
@@ -315,7 +314,6 @@ paths:
     get:
       tags: [oidc]
       operationId: listOidcProviders
-      x-status: draft
       summary: The configured OIDC providers, enabled or not
       responses:
         '200':
@@ -335,7 +333,6 @@ paths:
     post:
       tags: [oidc]
       operationId: createOidcProvider
-      x-status: draft
       summary: Add an OIDC provider
       description: |
         Before saving, git2 fetches `<issuer>/.well-known/openid-configuration`
@@ -366,7 +363,6 @@ paths:
     get:
       tags: [oidc]
       operationId: getOidcProvider
-      x-status: draft
       summary: One provider
       responses:
         '200':
@@ -381,7 +377,6 @@ paths:
     patch:
       tags: [oidc]
       operationId: updateOidcProvider
-      x-status: draft
       summary: Change a provider, or enable or disable it
       description: |
         A new issuer is checked like on create. Disabling removes the
@@ -407,7 +402,6 @@ paths:
     delete:
       tags: [oidc]
       operationId: deleteOidcProvider
-      x-status: draft
       summary: Delete a provider and its identity links
       description: Accounts created through it stay; they sign in another way or not at all.
       responses:
