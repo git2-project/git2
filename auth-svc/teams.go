@@ -234,10 +234,15 @@ func (s *PostgresStore) PutTeamMember(ctx context.Context, teamID, userID uuid.U
 		Scan(&m.UserID, &m.Username, &m.Role, &m.AddedAt, &added)
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) && pgErr.Code == "23503" { // foreign key violation
-		if pgErr.ConstraintName == "team_members_team_fkey" {
+		// Only the team and user keys mean "not found". Any other one (the
+		// role key, if roles.go and the roles table ever differ) is a real
+		// fault and falls through.
+		switch pgErr.ConstraintName {
+		case "team_members_team_fkey":
 			return TeamMember{}, false, ErrTeamNotFound
+		case "team_members_user_fkey":
+			return TeamMember{}, false, ErrNotFound
 		}
-		return TeamMember{}, false, ErrNotFound
 	}
 	if err != nil {
 		return TeamMember{}, false, fmt.Errorf("put team member: %w", err)
