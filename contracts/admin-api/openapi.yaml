@@ -3,8 +3,11 @@ info:
   title: git2 admin-api
   version: 0.1.0-draft
   description: |
-    The admin plane for WBS-3.1: users, roles and teams. Every operation is
-    implemented. Design notes: docs/design/identity-v0.md.
+    The admin plane: users, roles and teams (WBS-3.1), and the OIDC
+    providers for single sign-on (WBS-4.1). Operations marked
+    `x-status: draft` are not implemented yet, and their shape may still
+    change. Design notes: docs/design/identity-v0.md and
+    docs/design/oidc-v0.md.
 
     Every operation needs the `admin` instance role (Requirements
     Specification FR-08, UT-03). The role is read from the database on every request, so a change takes
@@ -24,6 +27,7 @@ tags:
   - name: roles
   - name: users
   - name: teams
+  - name: oidc
 
 paths:
   /admin/roles:
@@ -307,6 +311,113 @@ paths:
         '404': { $ref: '#/components/responses/NotFound' }
         '503': { $ref: '#/components/responses/Unavailable' }
 
+  /admin/oidc-providers:
+    get:
+      tags: [oidc]
+      operationId: listOidcProviders
+      x-status: draft
+      summary: The configured OIDC providers, enabled or not
+      responses:
+        '200':
+          description: All providers, oldest first. Never more than a handful, so no paging.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [providers]
+                properties:
+                  providers:
+                    type: array
+                    items: { $ref: '#/components/schemas/OidcProvider' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+    post:
+      tags: [oidc]
+      operationId: createOidcProvider
+      x-status: draft
+      summary: Add an OIDC provider
+      description: |
+        Before saving, git2 fetches `<issuer>/.well-known/openid-configuration`
+        and checks that its `issuer` equals the one given and that it has an
+        authorization and a token endpoint (FR-21). If not, nothing is saved
+        and the 400 says why. The client secret is stored encrypted with
+        `GIT2_SECRET_KEY`; without that key the answer is 503.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateOidcProviderRequest' }
+      responses:
+        '201':
+          description: Created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OidcProvider' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+
+  /admin/oidc-providers/{provider_id}:
+    parameters:
+      - $ref: '#/components/parameters/ProviderID'
+    get:
+      tags: [oidc]
+      operationId: getOidcProvider
+      x-status: draft
+      summary: One provider
+      responses:
+        '200':
+          description: The provider.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OidcProvider' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+    patch:
+      tags: [oidc]
+      operationId: updateOidcProvider
+      x-status: draft
+      summary: Change a provider, or enable or disable it
+      description: |
+        A new issuer is checked like on create. Disabling removes the
+        provider from the sign-in page and refuses its sign-ins; accounts
+        created through it stay (UC-05 A2). The slug cannot change: it is
+        part of the redirect URI registered at the provider.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateOidcProviderRequest' }
+      responses:
+        '200':
+          description: Updated.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OidcProvider' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+    delete:
+      tags: [oidc]
+      operationId: deleteOidcProvider
+      x-status: draft
+      summary: Delete a provider and its identity links
+      description: Accounts created through it stay; they sign in another way or not at all.
+      responses:
+        '204':
+          description: Deleted.
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+
 components:
   securitySchemes:
     bearer:
@@ -315,6 +426,11 @@ components:
       bearerFormat: JWT
 
   parameters:
+    ProviderID:
+      name: provider_id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
     UserID:
       name: user_id
       in: path
@@ -540,3 +656,46 @@ components:
       required: [role]
       properties:
         role: { $ref: '#/components/schemas/TeamRole' }
+
+    OidcProvider:
+      type: object
+      required: [id, slug, display_name, issuer, client_id, has_client_secret, enabled, redirect_uri, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        slug: { $ref: '#/components/schemas/Slug' }
+        display_name: { type: string, maxLength: 100 }
+        issuer: { type: string, format: uri }
+        client_id: { type: string }
+        has_client_secret:
+          type: boolean
+          description: The secret itself is never returned.
+        enabled: { type: boolean }
+        redirect_uri:
+          type: string
+          format: uri
+          description: '`GIT2_EXTERNAL_URL/api/auth/oidc/<slug>/callback`, to register at the provider.'
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    CreateOidcProviderRequest:
+      type: object
+      additionalProperties: false
+      required: [slug, display_name, issuer, client_id, client_secret]
+      properties:
+        slug: { $ref: '#/components/schemas/Slug' }
+        display_name: { type: string, minLength: 1, maxLength: 100 }
+        issuer: { type: string, format: uri, maxLength: 2048 }
+        client_id: { type: string, minLength: 1, maxLength: 255 }
+        client_secret: { type: string, minLength: 1, maxLength: 1024, writeOnly: true }
+        enabled: { type: boolean, default: true }
+
+    UpdateOidcProviderRequest:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        display_name: { type: string, minLength: 1, maxLength: 100 }
+        issuer: { type: string, format: uri, maxLength: 2048 }
+        client_id: { type: string, minLength: 1, maxLength: 255 }
+        client_secret: { type: string, minLength: 1, maxLength: 1024, writeOnly: true }
+        enabled: { type: boolean }

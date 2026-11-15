@@ -4,7 +4,9 @@ info:
   version: 0.1.0-draft
   description: |
     Sign-in for both planes: accounts, the access/refresh token pair, and the
-    one-time setup of the first admin. Design notes: docs/design/identity-v0.md.
+    one-time setup of the first admin, and single sign-on through OIDC
+    providers. Design notes: docs/design/identity-v0.md and
+    docs/design/oidc-v0.md.
 
     Tokens are never in response bodies. Sign-in and refresh return them in
     the `X-Access-Token` / `X-Refresh-Token` headers; send the access token as
@@ -22,6 +24,7 @@ servers:
 
 tags:
   - name: auth
+  - name: oidc
   - name: setup
 
 paths:
@@ -189,6 +192,145 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
 
+  /auth/oidc/providers:
+    get:
+      tags: [oidc]
+      operationId: listSignInProviders
+      x-status: draft
+      summary: The enabled OIDC providers, for the sign-in buttons
+      security: []
+      responses:
+        '200':
+          description: Enabled providers, by display name. Empty when SSO is not set up.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [providers]
+                properties:
+                  providers:
+                    type: array
+                    items: { $ref: '#/components/schemas/SignInProvider' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+
+  /auth/oidc/{slug}/start:
+    parameters:
+      - $ref: '#/components/parameters/ProviderSlug'
+    get:
+      tags: [oidc]
+      operationId: startOidcSignIn
+      x-status: draft
+      summary: Send the browser to the provider
+      description: |
+        A browser navigation, not an API call. Stores the state, nonce and
+        PKCE verifier for 10 minutes and redirects to the provider's
+        authorization endpoint. Rate limit: 30 per minute per client IP.
+      security: []
+      parameters:
+        - name: return_to
+          in: query
+          description: |
+            Where to land after sign-in: a path on this instance that starts
+            with a single `/`. A path under `/admin/` signs in to the Admin
+            plane. Default `/`.
+          schema: { type: string, maxLength: 2048 }
+      responses:
+        '302':
+          description: To the provider's authorization endpoint.
+          headers:
+            Location: { schema: { type: string, format: uri } }
+        '303':
+          description: |
+            Back to the sign-in page with `?sso_error=provider_unavailable`
+            when the provider cannot be reached.
+          headers:
+            Location: { schema: { type: string } }
+        '400':
+          description: '`return_to` is not a path on this instance.'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404':
+          description: No enabled provider with this slug.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /auth/oidc/{slug}/callback:
+    parameters:
+      - $ref: '#/components/parameters/ProviderSlug'
+    get:
+      tags: [oidc]
+      operationId: oidcCallback
+      x-status: draft
+      summary: Where the provider sends the browser back
+      description: |
+        Register `GIT2_EXTERNAL_URL/api/auth/oidc/<slug>/callback` as the
+        redirect URI at the provider. git2 checks the state, trades the code
+        for an ID token (with the PKCE verifier), checks its signature,
+        issuer, audience and nonce, and finds, links or creates the account
+        (docs/design/oidc-v0.md). It never answers with tokens: it redirects
+        to the plane's `/sign-in/callback?code=<handoff>&return_to=…`, or to
+        its sign-in page with `?sso_error=<reason>`.
+      security: []
+      parameters:
+        - { name: code, in: query, schema: { type: string } }
+        - { name: state, in: query, schema: { type: string } }
+        - name: error
+          in: query
+          description: Set by the provider when the user cancelled or it refused.
+          schema: { type: string }
+      responses:
+        '303':
+          description: |
+            To `/sign-in/callback` (or `/admin/sign-in/callback`) with a
+            one-time `code`, or to `/sign-in` (or `/admin/sign-in`) with
+            `sso_error`: `cancelled`, `provider_unavailable`,
+            `account_disabled`, `email_in_use` or `failed`.
+          headers:
+            Location: { schema: { type: string } }
+
+  /auth/oidc/exchange:
+    post:
+      tags: [oidc]
+      operationId: exchangeOidcCode
+      x-status: draft
+      summary: Trade the one-time handoff code for a token pair
+      description: |
+        The callback page posts the `code` from its URL. A code works once
+        and for 60 seconds. Rate limit: 30 per minute per client IP.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [code]
+              properties:
+                code: { type: string, maxLength: 128 }
+      responses:
+        '200':
+          description: Signed in; the same answer as `/auth/login`.
+          headers:
+            X-Access-Token: { $ref: '#/components/headers/X-Access-Token' }
+            X-Refresh-Token: { $ref: '#/components/headers/X-Refresh-Token' }
+            X-Access-Expires-In: { $ref: '#/components/headers/X-Access-Expires-In' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LoginResponse' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401':
+          description: '`invalid or expired sign-in code`, or the account was disabled meanwhile.'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+        '500': { $ref: '#/components/responses/ServerError' }
+        '503': { $ref: '#/components/responses/Unavailable' }
+
   /setup/status:
     get:
       tags: [setup]
@@ -240,6 +382,13 @@ paths:
         '500': { $ref: '#/components/responses/ServerError' }
 
 components:
+  parameters:
+    ProviderSlug:
+      name: slug
+      in: path
+      required: true
+      schema: { type: string, pattern: '^[a-z0-9][a-z0-9_-]{2,38}$' }
+
   securitySchemes:
     bearer:
       type: http
@@ -380,6 +529,13 @@ components:
       additionalProperties: false
       properties:
         refresh_token: { type: string }
+
+    SignInProvider:
+      type: object
+      required: [slug, display_name]
+      properties:
+        slug: { type: string }
+        display_name: { type: string }
 
     SetupStatus:
       type: object

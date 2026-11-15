@@ -40,6 +40,7 @@ Every PR adds its lines under `## [Unreleased]`: one line per change, starting w
 - auth-svc: `RequireAuth` checks revocation and the disabled marker in one Redis round trip; it still fails open on a Redis fault
 - internal/jwt: token times (`iat`, `exp`, `nbf`) carry milliseconds, so a token issued in the same second as a disable is told apart
 - docs: Project Plan v1.1: repository creation and deletion now in D-01, D-02, T-05, T-06, WBS-5.1, WBS-6.1 and WBS-17.2; effort distribution table in Section 3 (development, testing, documentation, project management)
+- contracts: OIDC single sign-on v0, as drafts: provider settings in admin-api (`/api/admin/oidc-providers`) and the sign-in flow in auth-svc (`/api/auth/oidc/providers`, `…/{slug}/start`, `…/{slug}/callback`, `/api/auth/oidc/exchange`); design in `docs/design/oidc-v0.md`
 
 ### Fixed
 - git2 core: per-IP rate limits see the client behind the gateway: `X-Real-IP` is used only on connections from `TRUSTED_PROXY_CIDRS` (`internal/realip`), never from anyone else (git2-deploy B-02)
