@@ -11,7 +11,7 @@
 | **Group members** | Osman Yahya Akıncı — 150230106, Abdullah Akcan — 150220051, Bilge Bostanbaşı — 150230081, Ceyda Akın — 150220096, Zarif Beste Süner — 150220085 |
 | **Instructor** | Tolga Ovatman, Ayşe Tosun Kühn |
 | **Submission date** | 2026-10-19 |
-| **Document version** | 1.0 |
+| **Document version** | 1.1 |
 
 ---
 
@@ -64,8 +64,8 @@ These three items are listed in the charter but are the first to drop if the tea
 
 | Deliverable ID | Deliverable name | Description / contents | Acceptance criterion |
 |---|---|---|---|
-| D-01 | git2 core services and API | Go services gateway, auth-svc, git-svc, dash-api and admin-api; OpenAPI 3 and gRPC contracts; PostgreSQL schemas; Redis integration | All services build and pass CI; the public REST API matches the OpenAPI spec (contract tests pass); a standard `git` client can push, clone and merge through git2 |
-| D-02 | Dash web application | React app for developers: repositories and code browsing, merge requests and code review, issues, pipeline views | The developer flow sign-in → push → open MR → review → pipeline → merge passes the Playwright E2E suite |
+| D-01 | git2 core services and API | Go services gateway, auth-svc, git-svc, dash-api and admin-api; OpenAPI 3 and gRPC contracts; PostgreSQL schemas; Redis integration | All services build and pass CI; the public REST API matches the OpenAPI spec (contract tests pass); a repository created through the API can be pushed to, cloned and merged with a standard `git` client, and a deleted repository can no longer be cloned |
+| D-02 | Dash web application | React app for developers: repository list, creation and deletion, code browsing, merge requests and code review, issues, pipeline views | The developer flow sign-in → create repository → push → open MR → review → pipeline → merge passes the Playwright E2E suite |
 | D-03 | Admin web application | React app for IT: setup wizard, users and teams, SSO/LDAP, runners, instance settings, audit log, health dashboard | The admin flow (first admin, create team, connect OIDC and LDAP, register runner, read audit log) passes the E2E suite |
 | D-04 | CI/CD system | ci-svc and git2-runner: `.git2-ci.yml` spec, pipeline scheduling, Redis job queue, container execution, live logs, artifacts | A push triggers a multi-stage pipeline whose jobs run in containers on a registered runner; logs stream live; artifacts are downloadable |
 | D-05 | Backup and restore system | backup-svc and `git2ctl restore`: encrypted snapshots to S3-compatible storage or local disk | A snapshot restored on a **new** VM brings back all repositories, users, settings and secrets; the restore test passes |
@@ -82,8 +82,8 @@ These three items are listed in the charter but are the first to drop if the tea
 | T-02 | Authentication and sessions | Users sign in once for both Dash and Admin; sessions are kept in Redis; services accept tokens issued by auth-svc | D-01, D-02, D-03 |
 | T-03 | User, team and access management | Admins manage users, organizations, teams and roles; users manage personal access tokens and SSH keys; permissions are enforced on every API call | D-01, D-03 |
 | T-04 | Single sign-on | Users sign in through an OIDC provider or LDAP directory; LDAP groups map to git2 teams | D-01, D-03 |
-| T-05 | Repository hosting and Git transport | Create and delete repositories; push and clone over HTTPS (and SSH, optional) with a standard `git` client | D-01 |
-| T-06 | Code browsing and search | Browse files, branches and commits with syntax highlighting; search code (optional) | D-02 |
+| T-05 | Repository hosting and Git transport | Users create repositories (owner, name, optional description and default branch) and delete them, through the API and from Dash; push and clone over HTTPS (and SSH, optional) with a standard `git` client | D-01, D-02 |
+| T-06 | Repository and code browsing, search | List repositories, create a new repository and delete one from Dash; browse files, branches and commits with syntax highlighting; search code (optional) | D-02 |
 | T-07 | Branch protection and Git LFS | Protect branches with push and merge rules; store large files with Git LFS | D-01, D-02 |
 | T-08 | Merge requests and code review | Open merge requests, view diffs, comment inline, approve, and merge with a chosen strategy | D-01, D-02 |
 | T-09 | Issue tracking | Create and manage issues with labels, milestones and assignees; @mentions create notifications | D-01, D-02 |
@@ -134,10 +134,10 @@ Size scale used for every activity (1 man-week = 40 h):
 | WBS-3.2 | T-03 | Personal access tokens and SSH keys | Users create scoped PATs and add SSH keys; revoked tokens stop working immediately | S |
 | WBS-4.1 | T-04 | OIDC single sign-on | Sign-in through an OIDC provider (Keycloak in tests) creates or links the user account | M |
 | WBS-4.2 | T-04 | LDAP sign-in and group sync | Users sign in with LDAP credentials (OpenLDAP in tests); LDAP groups map to git2 teams | S |
-| WBS-5.1 | T-05 | Repository storage and create/delete API | Repositories created and deleted through the API; bare repositories stored on disk | S |
+| WBS-5.1 | T-05 | Repository storage and create/delete API | Repositories created through the API under a user or an organization, with name rules and names unique per owner (ignoring case); deleted after the name is typed to confirm, and the name can be reused; bare repositories stored on disk | S |
 | WBS-5.2 | T-05 | Smart HTTP push and clone | Standard `git` client clones and pushes over HTTPS with token auth; integration tests with real `git` pass (M1 demo) | M |
 | WBS-5.3 | T-05 | SSH push and clone *(optional)* | `git clone ssh://…` and push work with keys from 3.2 | S |
-| WBS-6.1 | T-06 | Repository and code browser | File tree, file view with Shiki highlighting, commit list and commit view work for any branch | M |
+| WBS-6.1 | T-05, T-06 | Repository pages and code browser | Repository list, **New repository** form and delete confirmation in Dash, backed by the WBS-5.1 API; empty repositories show the clone URL and first-push commands; file tree, file view with Shiki highlighting, commit list and commit view work for any branch | M |
 | WBS-6.2 | T-06 | Code search *(optional)* | Search across a repository's default branch returns matching files and lines | S |
 | WBS-7.1 | T-07 | Protected branches and Git LFS | Pushes to protected branches are rejected unless rules allow; LFS objects upload and download | M |
 | WBS-8.1 | T-08 | Diff and merge engine | Diff between branches and merge with merge-commit, squash and fast-forward strategies; conflicts reported | M |
@@ -166,7 +166,7 @@ Size scale used for every activity (1 man-week = 40 h):
 | WBS-16.3 | T-16 | API reference | HTML reference generated from the OpenAPI spec and served by the gateway at `/api/docs` | T |
 | WBS-16.4 | T-16 | Developer documentation (README and CLAUDE.md per repository) | Each repository has up-to-date build/test commands, architecture notes and AI-agent rules | S |
 | WBS-17.1 | T-17 | Weekly integration check (every Friday) | Whole stack started from `main` with Compose; milestone smoke test recorded green/red | XL |
-| WBS-17.2 | T-17 | End-to-end test suite (Playwright) and UI polish | E2E tests cover sign-in → push → MR → pipeline → merge and the Admin flows; all pass in CI | S |
+| WBS-17.2 | T-17 | End-to-end test suite (Playwright) and UI polish | E2E tests cover sign-in → create repository → push → MR → pipeline → merge, repository deletion and the Admin flows; all pass in CI | S |
 | WBS-17.3 | T-17 | Bug bash and release v1.0.0 | All S1/S2 bugs fixed; `v1.0.0` tagged and deployed to the live instance (codebase deadline 25.12) | L |
 | WBS-18.1 | T-18 | Scrum events (daily updates, sprint planning and review) | Held every week; board, burndown and next sprint tasks updated every Friday | XL |
 | WBS-18.2 | T-18 | Project management (roadmap, status reports, change control) | Weekly status note and updated plan each Sunday | M |
@@ -268,6 +268,22 @@ Size scale used for every activity (1 man-week = 40 h):
 
 Without the AI agent, the same baseline would need about **807.5 h (20.19 man-weeks)**, which is more than the team's 675 h capacity. With Claude Code the plan needs **652.4 h (16.31 man-weeks)**, leaving **22.6 h (0.57 man-weeks)** of reserve. The AI agent therefore saves about **155.1 h (3.88 man-weeks)** and is what makes the scope fit; this dependence is recorded as a risk (R-06 and R-11 in Section 6). The factors are planning assumptions and will be checked against actual hours from W1.
 
+**Effort distribution.** The 49 baseline activities grouped by kind of work:
+
+| Kind of work | WBS activities | Activities | Effort (h) | Effort (man-weeks) | Share of total |
+|---|---|--:|--:|--:|--:|
+| Development: implementation | WBS-1.1 – WBS-15.1 | 34 | 254.9 | 6.37 | 39.1% |
+| Development: unit and integration tests written with the code | WBS-1.1 – WBS-15.1 | (same 34) | 85.0 | 2.12 | 13.0% |
+| Testing and integration: Friday integration check, E2E suite, bug bash and release | WBS-17.1 – WBS-17.3 | 3 | 69.9 | 1.75 | 10.7% |
+| Product documentation: install/admin guide, user guide, API reference, developer docs | WBS-16.1 – WBS-16.4 | 4 | 14.6 | 0.37 | 2.2% |
+| Project documentation: four course reports, demo and final presentation | WBS-18.4 – WBS-18.8 | 5 | 120.0 | 3.00 | 18.4% |
+| Project management and Scrum events | WBS-18.1 – WBS-18.3 | 3 | 108.0 | 2.70 | 16.6% |
+| **Total (baseline)** | | **49** | **652.4** | **16.31** | **100%** |
+| *of which testing (tests in development + testing and integration)* | | | *154.9* | *3.87* | *23.7%* |
+| *of which documentation (product + project)* | | | *134.6* | *3.37* | *20.6%* |
+
+Development activities include their own tests: every PR must come with tests (Section 1.1), and the completion conditions in Section 2 are checked by those tests. We assume that about **25%** of each development activity's effort is spent writing them, which gives the split in the first two rows. Like the AI factors, this share is a planning assumption that will be checked against the hours logged from W1. Man-weeks are rounded so that they add up to the 16.31 total.
+
 **Effort versus duration.** Duration = effort ÷ allocation. For example, WBS-5.2 (Smart HTTP push/clone) needs 0.39 man-weeks; Abdullah works on it at 0.20 FTE (≈ 8 h/week) next to his other work, so it takes **2 weeks**. Because every member is only 0.375 FTE (15 h/week) on average, a 1-man-week activity done by one person would take almost 3 weeks; this is why activities were kept small and why lanes run in parallel. The AI agent shortens durations only through lower effort — it does not add parallel capacity — so all durations in Section 5 are computed from human FTE only.
 
 ---
@@ -282,7 +298,7 @@ The team uses a controlled decentralized structure: the Project Manager sets the
 |---|---|---|---|
 | Osman Yahya Akıncı | 150230106 | Product Owner, Project Manager, Pipelines Owner | Roadmap and scope decisions, weekly status, Friday integration; ci-svc, git2-runner, image pipeline and live instance, git2-mcp; editor of the demo and final presentation |
 | Abdullah Akcan | 150220051 | Git Core Owner | git-svc (repository storage, HTTPS/SSH transport, diff and merge, branch protection, LFS), event outbox, git2 CLI; editor of the Software Design Report |
-| Bilge Bostanbaşı | 150230081 | Dash Owner | dash-web and dash-api (code browsing, merge requests and review, issues, pipeline views), shared UI kit, E2E tests, user guide; editor of the Requirement Specification Report |
+| Bilge Bostanbaşı | 150230081 | Dash Owner | dash-web and dash-api (repository pages, code browsing, merge requests and review, issues, pipeline views), shared UI kit, E2E tests, user guide; editor of the Requirement Specification Report |
 | Ceyda Akın | 150220096 | Platform & Backup Owner | gateway, Redis cache and rate limiting, Docker/Compose/Helm, `git2ctl`, backup-svc and restore, installation/admin guide; editor of the Software Test Report; tags releases |
 | Zarif Beste Süner | 150220085 | Scrum Master, Admin & Identity Owner | Sprint process and risk review; auth-svc, admin-api and admin-web (users, teams, SSO/LDAP, tokens, settings, audit log), API reference; editor of the Requirement Analysis Report |
 | Claude (AI agent) | — | AI Development Assistant | Used by every member through Claude Code to draft code, tests and documentation, guided by a CLAUDE.md file in each repository; never merges on its own; not counted as FTE |
@@ -412,7 +428,7 @@ flowchart LR
     A5_1["WBS-5.1<br/>Repo storage API<br/>W1 · 1 wk"]
     A5_2["WBS-5.2<br/>Smart HTTP push/clone<br/>W2–W3 · 2 wk"]
     A5_3["WBS-5.3<br/>SSH push/clone<br/>W8 · 1 wk"]
-    A6_1["WBS-6.1<br/>Code browser<br/>W2–W3 · 2 wk"]
+    A6_1["WBS-6.1<br/>Repo pages + code browser<br/>W2–W3 · 2 wk"]
     A6_2["WBS-6.2<br/>Code search<br/>W7 · 1 wk"]
     A7_1["WBS-7.1<br/>Protected branches + LFS<br/>W6–W7 · 2 wk"]
     A8_1["WBS-8.1<br/>Diff + merge engine<br/>W4–W5 · 2 wk"]
@@ -555,7 +571,7 @@ The forward and backward pass over the network gives these earliest and latest s
 | WBS-4.2 | LDAP sign-in | W5 | 1 | W4 | W8 | 4 |
 | WBS-5.1 | Repo storage API | W1 | 1 | W1 | W1 | **0** |
 | WBS-5.2 | Smart HTTP push/clone | W2–W3 | 2 | W2 | W2 | **0** |
-| WBS-6.1 | Code browser | W2–W3 | 2 | W2 | W2 | **0** |
+| WBS-6.1 | Repo pages + code browser | W2–W3 | 2 | W2 | W2 | **0** |
 | WBS-7.1 | Protected branches + LFS | W6–W7 | 2 | W6 | W6 | **0** |
 | WBS-8.1 | Diff + merge engine | W4–W5 | 2 | W4 | W4 | **0** |
 | WBS-8.2 | MR + code review UI | W4–W5 | 2 | W4 | W4 | **0** |
@@ -630,7 +646,7 @@ gantt
     section Git core and code review
     WBS-5.1 Repo storage API :crit, w5_1, 2026-10-26, 7d
     WBS-5.2 Smart HTTP push/clone :crit, w5_2, 2026-11-02, 14d
-    WBS-6.1 Code browser :crit, w6_1, 2026-11-02, 14d
+    WBS-6.1 Repo pages + code browser :crit, w6_1, 2026-11-02, 14d
     WBS-7.1 Protected branches + LFS :crit, w7_1, 2026-11-30, 14d
     WBS-8.1 Diff + merge engine :crit, w8_1, 2026-11-16, 14d
     WBS-8.2 MR + code review UI :crit, w8_2, 2026-11-16, 14d
