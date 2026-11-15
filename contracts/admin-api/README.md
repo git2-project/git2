@@ -12,7 +12,8 @@
 
 | Group | State | Needed by |
 |---|---|---|
-| Roles, users, teams, team members | Draft (`x-status: draft`) | Admin console, WBS-3.1, W2–W3 |
+| Users: list, create, get, update, enable and disable | Implemented (`admin-api/users.go`) | Admin console, WBS-3.1, W3 |
+| Roles, teams, team members | Draft (`x-status: draft`) | Admin console, WBS-3.1, W3–W4 |
 | Organizations | Not written yet | dash-api owners (`/repos/{owner}/...`), WBS-3.1 |
 
 ## Rules

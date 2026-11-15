@@ -1,6 +1,6 @@
 // Command git2 is the single binary that runs git2's control-plane services.
-// Today that is auth-svc; the other services mount on the same router as they
-// land.
+// Today that is auth-svc and admin-api; the other services mount on the same
+// router as they land.
 package main
 
 import (
@@ -14,6 +14,7 @@ import (
 	"syscall"
 	"time"
 
+	adminapi "github.com/git2-project/git2/admin-api"
 	authsvc "github.com/git2-project/git2/auth-svc"
 	"github.com/git2-project/git2/internal/cache"
 	"github.com/git2-project/git2/internal/config"
@@ -80,15 +81,17 @@ func run(ctx context.Context, cfg *config.Config) error {
 		slog.Info("no admin yet: setup token taken from GIT2_SETUP_TOKEN", "expires_at", setup.ExpiresAt)
 	}
 
+	jwtMgr := authjwt.NewManager(cfg.JWTSecret, cfg.AccessTokenExpiry, cfg.RefreshTokenExpiry)
 	auth, err := authsvc.NewHandler(authsvc.Deps{
 		Users: store,
 		Setup: store,
-		JWT:   authjwt.NewManager(cfg.JWTSecret, cfg.AccessTokenExpiry, cfg.RefreshTokenExpiry),
+		JWT:   jwtMgr,
 		Redis: rdb,
 	})
 	if err != nil {
 		return err
 	}
+	admin := adminapi.NewHandler(adminapi.Deps{Users: store, JWT: jwtMgr, Redis: rdb})
 
 	r := chi.NewRouter()
 	// realip first, so the logger and the rate limits see the client, not the gateway.
@@ -96,7 +99,10 @@ func run(ctx context.Context, cfg *config.Config) error {
 	r.Get("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		httpx.JSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
-	r.Route("/api", auth.Mount)
+	r.Route("/api", func(r chi.Router) {
+		auth.Mount(r)
+		admin.Mount(r)
+	})
 
 	srv := &http.Server{
 		Addr:              ":" + cfg.ServerPort,
