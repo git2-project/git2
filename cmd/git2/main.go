@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -22,6 +23,7 @@ import (
 	"github.com/git2-project/git2/internal/httpx"
 	authjwt "github.com/git2-project/git2/internal/jwt"
 	"github.com/git2-project/git2/internal/realip"
+	"github.com/git2-project/git2/internal/secretbox"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 )
@@ -91,7 +93,21 @@ func run(ctx context.Context, cfg *config.Config) error {
 	if err != nil {
 		return err
 	}
-	admin := adminapi.NewHandler(adminapi.Deps{Users: store, Teams: store, JWT: jwtMgr, Redis: rdb})
+	oidcSettings := authsvc.OIDCSettings{ExternalURL: cfg.ExternalURL}
+	if cfg.SecretKey != "" {
+		// A key that is set but unusable is a mistake to fix, not a reason
+		// to run with OIDC silently off.
+		if oidcSettings.Box, err = secretbox.New(cfg.SecretKey); err != nil {
+			return fmt.Errorf("GIT2_SECRET_KEY: %w", err)
+		}
+	}
+	if !oidcSettings.On() {
+		slog.Info("OIDC single sign-on is off: set GIT2_SECRET_KEY and GIT2_EXTERNAL_URL to turn it on")
+	}
+	admin := adminapi.NewHandler(adminapi.Deps{
+		Users: store, Teams: store, OIDCProviders: store, OIDC: oidcSettings,
+		JWT: jwtMgr, Redis: rdb,
+	})
 
 	r := chi.NewRouter()
 	// realip first, so the logger and the rate limits see the client, not the gateway.

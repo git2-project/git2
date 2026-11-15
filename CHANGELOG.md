@@ -41,6 +41,8 @@ Every PR adds its lines under `## [Unreleased]`: one line per change, starting w
 - internal/jwt: token times (`iat`, `exp`, `nbf`) carry milliseconds, so a token issued in the same second as a disable is told apart
 - docs: Project Plan v1.1: repository creation and deletion now in D-01, D-02, T-05, T-06, WBS-5.1, WBS-6.1 and WBS-17.2; effort distribution table in Section 3 (development, testing, documentation, project management)
 - contracts: OIDC single sign-on v0, as drafts: provider settings in admin-api (`/api/admin/oidc-providers`) and the sign-in flow in auth-svc (`/api/auth/oidc/providers`, `…/{slug}/start`, `…/{slug}/callback`, `/api/auth/oidc/exchange`); design in `docs/design/oidc-v0.md`
+- admin-api: OIDC providers (`/api/admin/oidc-providers`): list, add, get, change, enable or disable, delete. Before saving, the issuer's discovery document is checked (FR-21); the client secret is write-only and stored encrypted
+- internal: `secretbox`, AES-256-GCM for secrets kept in the database, with the key from `GIT2_SECRET_KEY`; git2 core reads `GIT2_EXTERNAL_URL` for OIDC redirect URIs. Without both, OIDC is off
 
 ### Fixed
 - git2 core: per-IP rate limits see the client behind the gateway: `X-Real-IP` is used only on connections from `TRUSTED_PROXY_CIDRS` (`internal/realip`), never from anyone else (git2-deploy B-02)
@@ -53,3 +55,4 @@ Every PR adds its lines under `## [Unreleased]`: one line per change, starting w
 - `001_auth_users.sql`: `auth_svc` schema and `auth_svc.users`
 - `004_auth_roles_teams.sql`: `auth_svc.roles` (fixed list: admin, user, maintainer, member), `users.role` (default `user`), `auth_svc.teams`, `auth_svc.team_members`
 - `005_auth_setup_token.sql`: `auth_svc.setup_token`, the hash of the one-time first-admin setup token
+- `007_auth_oidc.sql`: `auth_svc.oidc_providers` (client secret sealed with `GIT2_SECRET_KEY`) and `auth_svc.user_identities` (provider subject → user)
