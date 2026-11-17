@@ -4,8 +4,8 @@ This directory holds no `.proto` files on purpose. The contract of git-svc lives
 
 | | |
 |---|---|
-| Source | [`proto/git/v1/`](https://github.com/git2-project/git2-codeplane/tree/v0.2.0/proto/git/v1) in git2-codeplane |
-| Pinned version | `v0.2.0` |
+| Source | [`proto/git/v1/`](https://github.com/git2-project/git2-codeplane/tree/v0.3.0/proto/git/v1) in git2-codeplane |
+| Pinned version | `v0.3.0` |
 | Protobuf package | `git.v1` |
 | Owner | Git Core lane (Abdullah Akcan) |
 
@@ -38,14 +38,14 @@ dash-api resolves owner and name to a repository ID and checks access before cal
 
 ci-svc reads `.git2-ci.yml` with `CommitService.GetBlob`, with `ref` set to the pushed commit's SHA.
 
-The decisions behind these RPCs (ref rules, limits, ordering, and what is left out) are in [git2-codeplane ADR 0013](https://github.com/git2-project/git2-codeplane/blob/v0.2.0/docs/decisions/0013-reading-repository-content.md).
+The decisions behind these RPCs (ref rules, limits, ordering, and what is left out) are in [git2-codeplane ADR 0013](https://github.com/git2-project/git2-codeplane/blob/v0.3.0/docs/decisions/0013-reading-repository-content.md).
 
 ## Using it
 
 **Go services** import the generated code, which is committed in git2-codeplane:
 
 ```sh
-go get github.com/git2-project/git2-codeplane@v0.2.0
+go get github.com/git2-project/git2-codeplane@v0.3.0
 ```
 
 ```go
@@ -59,10 +59,10 @@ commits := gitv1.NewCommitServiceClient(conn)
 **Mocks and other languages** generate straight from the pinned tag with buf:
 
 ```sh
-buf generate "https://github.com/git2-project/git2-codeplane.git#tag=v0.2.0,subdir=proto"
+buf generate "https://github.com/git2-project/git2-codeplane.git#tag=v0.3.0,subdir=proto"
 ```
 
-**Events** arrive through git-svc's outbox:
+**Events** are written to git-svc's outbox, and its relay delivers each one to the services subscribed to its type through `events.v1.EventSink` ([`contracts/events/`](../events/README.md)):
 - The event type is the full message name, e.g. `git.v1.RepositoryCreated`.
 - The payload is canonical protobuf JSON; decode it with `protojson.Unmarshal` into the matching message.
 - Delivery is at least once, so consumers must be idempotent.
