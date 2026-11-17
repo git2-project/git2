@@ -83,16 +83,6 @@ func run(ctx context.Context, cfg *config.Config) error {
 		slog.Info("no admin yet: setup token taken from GIT2_SETUP_TOKEN", "expires_at", setup.ExpiresAt)
 	}
 
-	jwtMgr := authjwt.NewManager(cfg.JWTSecret, cfg.AccessTokenExpiry, cfg.RefreshTokenExpiry)
-	auth, err := authsvc.NewHandler(authsvc.Deps{
-		Users: store,
-		Setup: store,
-		JWT:   jwtMgr,
-		Redis: rdb,
-	})
-	if err != nil {
-		return err
-	}
 	oidcSettings := authsvc.OIDCSettings{ExternalURL: cfg.ExternalURL}
 	if cfg.SecretKey != "" {
 		// A key that is set but unusable is a mistake to fix, not a reason
@@ -103,6 +93,18 @@ func run(ctx context.Context, cfg *config.Config) error {
 	}
 	if !oidcSettings.On() {
 		slog.Info("OIDC single sign-on is off: set GIT2_SECRET_KEY and GIT2_EXTERNAL_URL to turn it on")
+	}
+	jwtMgr := authjwt.NewManager(cfg.JWTSecret, cfg.AccessTokenExpiry, cfg.RefreshTokenExpiry)
+	auth, err := authsvc.NewHandler(authsvc.Deps{
+		Users:     store,
+		Setup:     store,
+		Providers: store,
+		OIDC:      oidcSettings,
+		JWT:       jwtMgr,
+		Redis:     rdb,
+	})
+	if err != nil {
+		return err
 	}
 	admin := adminapi.NewHandler(adminapi.Deps{
 		Users: store, Teams: store, OIDCProviders: store, OIDC: oidcSettings,

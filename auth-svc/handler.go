@@ -21,8 +21,12 @@ type Deps struct {
 	Users UserStore
 	// Setup backs /api/setup. When nil, those routes are not mounted.
 	Setup SetupStore
-	JWT   *authjwt.Manager
-	Redis *redis.Client
+	// Providers and OIDC back OIDC sign-in; without both, the provider
+	// list is empty and sign-in through a provider answers 404.
+	Providers OIDCSignInStore
+	OIDC      OIDCSettings
+	JWT       *authjwt.Manager
+	Redis     *redis.Client
 }
 
 type Handler struct {
@@ -106,7 +110,14 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, http.StatusServiceUnavailable, "could not sign in, try again")
 		return
 	}
-	if !password.Verify(u.PasswordHash, req.Password) {
+	// An account made by OIDC sign-in has no password. It is checked against
+	// the dummy hash, so it costs the same time as a wrong password and the
+	// answer does not reveal that the email is registered.
+	hash := u.PasswordHash
+	if hash == "" {
+		hash = h.dummyHash
+	}
+	if !password.Verify(hash, req.Password) || u.PasswordHash == "" {
 		httpx.Error(w, http.StatusUnauthorized, "invalid credentials")
 		return
 	}
@@ -114,7 +125,12 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		httpx.Error(w, http.StatusForbidden, "account is disabled")
 		return
 	}
+	h.issueSession(w, r, u)
+}
 
+// issueSession signs u in: a new access token and refresh session, in the
+// response headers. Password and OIDC sign-in both end here.
+func (h *Handler) issueSession(w http.ResponseWriter, r *http.Request, u User) {
 	access, err := h.deps.JWT.IssueAccess(u.ID)
 	if err != nil {
 		slog.Error("issue access token", "err", err)

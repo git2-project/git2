@@ -196,7 +196,6 @@ paths:
     get:
       tags: [oidc]
       operationId: listSignInProviders
-      x-status: draft
       summary: The enabled OIDC providers, for the sign-in buttons
       security: []
       responses:
@@ -219,7 +218,6 @@ paths:
     get:
       tags: [oidc]
       operationId: startOidcSignIn
-      x-status: draft
       summary: Send the browser to the provider
       description: |
         A browser navigation, not an API call. Stores the state, nonce and
@@ -263,7 +261,6 @@ paths:
     get:
       tags: [oidc]
       operationId: oidcCallback
-      x-status: draft
       summary: Where the provider sends the browser back
       description: |
         Register `GIT2_EXTERNAL_URL/api/auth/oidc/<slug>/callback` as the
@@ -295,7 +292,6 @@ paths:
     post:
       tags: [oidc]
       operationId: exchangeOidcCode
-      x-status: draft
       summary: Trade the one-time handoff code for a token pair
       description: |
         The callback page posts the `code` from its URL. A code works once

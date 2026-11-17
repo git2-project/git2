@@ -43,6 +43,7 @@ Every PR adds its lines under `## [Unreleased]`: one line per change, starting w
 - contracts: OIDC single sign-on v0, as drafts: provider settings in admin-api (`/api/admin/oidc-providers`) and the sign-in flow in auth-svc (`/api/auth/oidc/providers`, `…/{slug}/start`, `…/{slug}/callback`, `/api/auth/oidc/exchange`); design in `docs/design/oidc-v0.md`
 - admin-api: OIDC providers (`/api/admin/oidc-providers`): list, add, get, change, enable or disable, delete. Before saving, the issuer's discovery document is checked (FR-21); the client secret is write-only and stored encrypted
 - internal: `secretbox`, AES-256-GCM for secrets kept in the database, with the key from `GIT2_SECRET_KEY`; git2 core reads `GIT2_EXTERNAL_URL` for OIDC redirect URIs. Without both, OIDC is off
+- auth-svc: OIDC sign-in (FR-22): `GET /api/auth/oidc/providers`, `…/{slug}/start` and `…/{slug}/callback` with state, nonce and PKCE, and `POST /api/auth/oidc/exchange`, where the web app trades a one-time code for the usual token headers. The first sign-in links an account with the same email only if the provider says it is verified, or creates one; disabled accounts are refused
 
 ### Fixed
 - git2 core: per-IP rate limits see the client behind the gateway: `X-Real-IP` is used only on connections from `TRUSTED_PROXY_CIDRS` (`internal/realip`), never from anyone else (git2-deploy B-02)
