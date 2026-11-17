@@ -16,6 +16,7 @@ const (
 	logoutLimit   = 30
 	refreshLimit  = 60
 	setupLimit    = 10
+	oidcLimit     = 30
 	publicWindow  = time.Minute
 )
 
@@ -37,5 +38,10 @@ func (h *Handler) Mount(r chi.Router) {
 		r.With(ratelimit.ByIP(rdb, "auth-logout", logoutLimit, publicWindow)).Post("/logout", h.Logout)
 
 		r.With(RequireAuth(h.deps.JWT, rdb)).Get("/me", h.Me)
+
+		r.Get("/oidc/providers", h.OIDCProviders)
+		r.With(ratelimit.ByIP(rdb, "oidc-start", oidcLimit, publicWindow)).Get("/oidc/{slug}/start", h.OIDCStart)
+		r.With(ratelimit.ByIP(rdb, "oidc-callback", oidcLimit, publicWindow)).Get("/oidc/{slug}/callback", h.OIDCCallback)
+		r.With(ratelimit.ByIP(rdb, "oidc-exchange", oidcLimit, publicWindow)).Post("/oidc/exchange", h.OIDCExchange)
 	})
 }

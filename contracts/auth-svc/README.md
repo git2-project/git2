@@ -15,7 +15,7 @@
 | Register, login, refresh, logout, me | Implemented; the spec matches the running service, except responses marked `x-status: draft` | Dash and Admin sign-in (WBS-2.2), now |
 | `role` on the user | Implemented | Admin access check, WBS-3.1, W2 |
 | First-admin setup (`/setup/status`, `/setup/admin`) | Implemented | Setup wizard, WBS-11.1, W6 |
-| OIDC sign-in (`/auth/oidc/*`) | Draft (`x-status: draft`), see [`docs/design/oidc-v0.md`](../../docs/design/oidc-v0.md) | Sign-in pages, WBS-4.1, W4 |
+| OIDC sign-in (`/auth/oidc/*`) | Implemented (`auth-svc/oidc_signin.go`), see [`docs/design/oidc-v0.md`](../../docs/design/oidc-v0.md) | Sign-in pages, WBS-4.1, W4 |
 
 ## Rules clients rely on
 

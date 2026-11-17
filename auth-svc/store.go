@@ -144,8 +144,8 @@ func (s *PostgresStore) Enable(ctx context.Context, id uuid.UUID) error {
 	return nil
 }
 
-func (s *PostgresStore) findOne(ctx context.Context, q string, arg any) (User, error) {
-	u, err := scanUser(s.db.QueryRow(ctx, q, arg))
+func (s *PostgresStore) findOne(ctx context.Context, q string, args ...any) (User, error) {
+	u, err := scanUser(s.db.QueryRow(ctx, q, args...))
 	if errors.Is(err, pgx.ErrNoRows) {
 		return User{}, ErrNotFound
 	}
