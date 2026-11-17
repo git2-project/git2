@@ -20,7 +20,9 @@ function endSession(): void {
 async function send(path: string, init: RequestInit): Promise<Response> {
   try {
     return await fetch(path, init);
-  } catch {
+  } catch (err) {
+    // An abort is the caller's choice, not an outage: let it through as is.
+    if (init.signal?.aborted) throw err;
     throw new ApiError(0, "git2 could not be reached");
   }
 }
@@ -82,12 +84,14 @@ export interface RequestOptions {
   body?: unknown;
   // Send the access token and retry once through a refresh on 401.
   auth?: boolean;
+  // Aborts the request, for example when the page that asked for it is left.
+  signal?: AbortSignal;
 }
 
 // request sends one JSON request to the git2 API and returns the raw response
 // when it is 2xx; any other status is thrown as an ApiError.
 export async function request(path: string, opts: RequestOptions = {}): Promise<Response> {
-  const { method = "GET", body, auth = false } = opts;
+  const { method = "GET", body, auth = false, signal } = opts;
 
   const attempt = () => {
     const headers: Record<string, string> = {};
@@ -98,6 +102,7 @@ export async function request(path: string, opts: RequestOptions = {}): Promise<
       method,
       headers,
       body: body === undefined ? undefined : JSON.stringify(body),
+      signal,
     });
   };
 

@@ -35,10 +35,15 @@ Every PR adds its lines under `## [Unreleased]`: one line per change, starting w
 - docs: Platform and Backup requirements in the Requirements Specification: gateway header trust, Git route and client IP (FR-02, FR-03, FR-05, FR-99), container hardening (NFR-35), backup settings from `git2.yaml`, retention and snapshot deletion (FR-65, FR-76, FR-100) (#23)
 - docs: identity v0 design (roles, teams, first-admin setup) in `docs/design/identity-v0.md`
 - docs: README, project charter, project plan, team map, roadmap, this changelog
+- contracts: examples for dash-api's repository and code-browsing answers (one repository, its tree, a README, branches, tags, history and a commit with a diff), so `prism mock` serves data Dash can show (#32)
+- web: dash-api types generated from `contracts/dash-api/openapi.yaml` into `@git2/api` (`pnpm --filter @git2/api gen`); the `web` check fails when they are out of date (#32)
+- web: `@git2/api` client for dash-api repositories and code browsing (repositories, branches, tags, tree, blob, raw download, commits); `request()` takes an `AbortSignal` (#32)
+- dash: code browser (WBS-6.1): repository list, repository page with clone URL, branch and tag picker, directory tree with breadcrumb and last commit, file view highlighted with Shiki (binary, LFS, cut and empty files, download through `/raw`), commit history by ref and path, commit detail with its diff (#32)
 
 ### Changed
 - auth-svc: `RequireAuth` checks revocation and the disabled marker in one Redis round trip; it still fails open on a Redis fault
 - internal/jwt: token times (`iat`, `exp`, `nbf`) carry milliseconds, so a token issued in the same second as a disable is told apart
+- contracts: dash-api `FileDiff.patch` is an empty string, not null, when only the mode or the name changed (git2-codeplane ADR 0013 review) (#32)
 - docs: Project Plan v1.1: repository creation and deletion now in D-01, D-02, T-05, T-06, WBS-5.1, WBS-6.1 and WBS-17.2; effort distribution table in Section 3 (development, testing, documentation, project management)
 
 ### Fixed
