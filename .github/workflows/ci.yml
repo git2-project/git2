@@ -93,7 +93,11 @@ jobs:
       - name: dash-api types match the contract
         run: |
           pnpm --filter @git2/api gen
-          if ! git diff --exit-code -- packages/api/src/generated; then
+          # status --porcelain also catches a generated file that is new
+          # (untracked), which git diff misses.
+          if [ -n "$(git status --porcelain -- packages/api/src/generated)" ]; then
+            git status --porcelain -- packages/api/src/generated
+            git diff -- packages/api/src/generated
             echo "::error::run 'pnpm --filter @git2/api gen' in web/ and commit the result"
             exit 1
           fi
