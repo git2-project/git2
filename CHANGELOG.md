@@ -17,6 +17,10 @@ Every PR adds its lines under `## [Unreleased]`: one line per change, starting w
 - auth-svc: role → permission table (`roles.go`) and `RequirePermission` middleware for admin routes; the role is read from the database on every request
 - auth-svc: `DisableUser` / `EnableUser` for admin-api: disabling ends every session of the user and makes `RequireAuth` reject their access tokens at once (`users.tokens_valid_after`, the refresh token's `sat` claim, a per-user session set and a `disabled:<uid>` marker in Redis); the last active admin cannot be disabled
 - auth-svc: first-admin setup: `GET /api/setup/status` and `POST /api/setup/admin` with a one-time setup token, printed once at startup or set with `GIT2_SETUP_TOKEN`, valid for one hour; a wrong token answers 403, a request after setup 409
+- admin-api: `GET`/`POST /api/admin/users` and `GET`/`PATCH /api/admin/users/{user_id}`: list users (prefix search on username or email, role and active filters, paging), create accounts, change email or role, enable and disable. Admin role only; an admin cannot demote or disable their own account, and the last active admin cannot be removed
+- auth-svc: `NewUser`, `CheckEmail`, `ParseInstanceRole` and the store's `ListUsers`, `UpdateUser`, `UserTeams` for admin-api (`directory.go`)
+- admin-api: `GET /api/admin/roles`; teams (`GET`/`POST /api/admin/teams`, `GET`/`PATCH`/`DELETE /api/admin/teams/{team_id}`) and their members (`GET .../members`, `PUT`/`DELETE .../members/{user_id}` with the team role `maintainer` or `member`). Deleting a team deletes its memberships
+- auth-svc: the store's roles, teams and team members for admin-api (`teams.go`)
 - internal: shared config, Postgres pool, Redis client, JWT (HS256), bcrypt, HTTP helpers and rate limiting
 - dev: devcontainer, `make run` / `tests` / `deps` / `build`, migration runner
 - gateway: one entry point (`cmd/gateway`): `/api` routed to git2 core after auth-svc's token check (`/api/auth/*` and `/api/setup/*` public), Dash and Admin served as static apps, client `X-Git2-*` / `X-Real-IP` / `X-Forwarded-*` headers replaced, `X-Request-Id`, `nosniff`, 30 s per API request (git2-deploy gateway contract v0.1)
@@ -31,15 +35,16 @@ Every PR adds its lines under `## [Unreleased]`: one line per change, starting w
 - docs: Platform and Backup requirements in the Requirements Specification: gateway header trust, Git route and client IP (FR-02, FR-03, FR-05, FR-99), container hardening (NFR-35), backup settings from `git2.yaml`, retention and snapshot deletion (FR-65, FR-76, FR-100) (#23)
 - docs: identity v0 design (roles, teams, first-admin setup) in `docs/design/identity-v0.md`
 - docs: README, project charter, project plan, team map, roadmap, this changelog
-- contracts: examples for dash-api's repository and code-browsing answers (one repository, its tree, a README, branches, tags, history and a commit with a diff), so `prism mock` serves data Dash can show
-- web: dash-api types generated from `contracts/dash-api/openapi.yaml` into `@git2/api` (`pnpm --filter @git2/api gen`); the `web` check fails when they are out of date
-- web: `@git2/api` client for dash-api repositories and code browsing (repositories, branches, tags, tree, blob, raw download, commits); `request()` takes an `AbortSignal`
-- dash: code browser (WBS-6.1): repository list, repository page with clone URL, branch and tag picker, directory tree with breadcrumb and last commit, file view highlighted with Shiki (binary, LFS, cut and empty files, download through `/raw`), commit history by ref and path, commit detail with its diff
+- contracts: examples for dash-api's repository and code-browsing answers (one repository, its tree, a README, branches, tags, history and a commit with a diff), so `prism mock` serves data Dash can show (#32)
+- web: dash-api types generated from `contracts/dash-api/openapi.yaml` into `@git2/api` (`pnpm --filter @git2/api gen`); the `web` check fails when they are out of date (#32)
+- web: `@git2/api` client for dash-api repositories and code browsing (repositories, branches, tags, tree, blob, raw download, commits); `request()` takes an `AbortSignal` (#32)
+- dash: code browser (WBS-6.1): repository list, repository page with clone URL, branch and tag picker, directory tree with breadcrumb and last commit, file view highlighted with Shiki (binary, LFS, cut and empty files, download through `/raw`), commit history by ref and path, commit detail with its diff (#32)
 
 ### Changed
 - auth-svc: `RequireAuth` checks revocation and the disabled marker in one Redis round trip; it still fails open on a Redis fault
 - internal/jwt: token times (`iat`, `exp`, `nbf`) carry milliseconds, so a token issued in the same second as a disable is told apart
-- contracts: dash-api `FileDiff.patch` is an empty string, not null, when only the mode or the name changed (git2-codeplane ADR 0013 review)
+- contracts: dash-api `FileDiff.patch` is an empty string, not null, when only the mode or the name changed (git2-codeplane ADR 0013 review) (#32)
+- docs: Project Plan v1.1: repository creation and deletion now in D-01, D-02, T-05, T-06, WBS-5.1, WBS-6.1 and WBS-17.2; effort distribution table in Section 3 (development, testing, documentation, project management)
 
 ### Fixed
 - git2 core: per-IP rate limits see the client behind the gateway: `X-Real-IP` is used only on connections from `TRUSTED_PROXY_CIDRS` (`internal/realip`), never from anyone else (git2-deploy B-02)
