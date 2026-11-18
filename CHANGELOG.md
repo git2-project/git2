@@ -32,6 +32,7 @@ Every PR adds its lines under `## [Unreleased]`: one line per change, starting w
 - contracts: references to the `backup.v1` contract and the gateway contract v0.1, both kept in git2-deploy (`contracts/backup/`, `contracts/gateway/`) (#19)
 - contracts: `git.v1` reference pinned to git2-codeplane `v0.2.0`: `RefService` and `CommitService` for dash-api's code-browsing endpoints, push events over smart HTTP (#15)
 - contracts: `events.v1` reference pinned to git2-codeplane `v0.3.0` (`contracts/events/`): `EventSink.Deliver`, through which a relay pushes its outbox events to the subscribed services; git-svc's relay is the first (#38)
+- contracts: `git.v1` at git2-codeplane `v0.4.0`: `CommitService.GetArchive`, a commit's files as a tar archive for CI jobs, and `BundleService` (`ListAllRepositories`, `CreateBundle`, `RestoreBundle`), whole repositories as Git bundles for backup-svc and `git2ctl restore`
 - docs: Dash requirements in the Requirements Specification: code browser, repository list and empty repositories (FR-30, FR-31, FR-97, FR-98), merge requests, issues and pipelines (#16)
 - docs: Platform and Backup requirements in the Requirements Specification: gateway header trust, Git route and client IP (FR-02, FR-03, FR-05, FR-99), container hardening (NFR-35), backup settings from `git2.yaml`, retention and snapshot deletion (FR-65, FR-76, FR-100) (#23)
 - docs: identity v0 design (roles, teams, first-admin setup) in `docs/design/identity-v0.md`
@@ -42,6 +43,7 @@ Every PR adds its lines under `## [Unreleased]`: one line per change, starting w
 - dash: code browser (WBS-6.1): repository list, repository page with clone URL, branch and tag picker, directory tree with breadcrumb and last commit, file view highlighted with Shiki (binary, LFS, cut and empty files, download through `/raw`), commit history by ref and path, commit detail with its diff (#32)
 
 ### Changed
+- contracts: `git.v1` and `events.v1` references pinned to git2-codeplane `v0.4.0`; `events.v1` is unchanged
 - contracts: `git.v1` reference pinned to git2-codeplane `v0.3.0`; git-svc's events are now delivered over `events.v1.EventSink` (#38)
 - auth-svc: `RequireAuth` checks revocation and the disabled marker in one Redis round trip; it still fails open on a Redis fault
 - internal/jwt: token times (`iat`, `exp`, `nbf`) carry milliseconds, so a token issued in the same second as a disable is told apart
