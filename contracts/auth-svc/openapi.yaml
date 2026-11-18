@@ -311,7 +311,13 @@ components:
     Username:
       type: string
       pattern: '^[a-z0-9][a-z0-9_-]{2,38}$'
-      description: Stored lowercase; used in repository URLs.
+      description: |
+        Stored lowercase; used in repository URLs. These names are reserved
+        and refused with 400, because they are top-level web paths, today or
+        later: `admin`, `api`, `assets`, `dashboard`, `explore`, `healthz`,
+        `login`, `logout`, `new`, `notifications`, `orgs`, `readyz`,
+        `register`, `repos`, `search`, `settings`, `sign-in`, `static`,
+        `users`.
 
     EmailInput:
       type: string
