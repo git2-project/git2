@@ -59,3 +59,4 @@ Every PR adds its lines under `## [Unreleased]`: one line per change, starting w
 - `001_auth_users.sql`: `auth_svc` schema and `auth_svc.users`
 - `004_auth_roles_teams.sql`: `auth_svc.roles` (fixed list: admin, user, maintainer, member), `users.role` (default `user`), `auth_svc.teams`, `auth_svc.team_members`
 - `005_auth_setup_token.sql`: `auth_svc.setup_token`, the hash of the one-time first-admin setup token
+- `008_ci_runner_health.sql`: `ci_svc.runners.health` and `ci_svc.jobs.container_stats` (with their times), the latest runner health report and job-container sample for monitoring in the console (git2-runner #51)
