@@ -12,7 +12,7 @@ This directory holds no `.proto` files on purpose. The contract of ci-svc lives 
 
 ## What it contains
 
-- `pipeline.proto`: `PipelineService` (`TriggerPipeline`, `GetPipeline`, `ListPipelines`, `CancelPipeline`, `GetJob`, `StreamJobLog`, `ValidateConfig`), for dash-api and the event relay.
+- `pipeline.proto`: `PipelineService` (`TriggerPipeline`, `GetPipeline`, `ListPipelines`, `CancelPipeline`, `RetryJob`, `GetJob`, `StreamJobLog`, `ValidateConfig`), for dash-api and the event relay.
 - `runner_admin.proto`: `RunnerAdminService` (registration tokens, list, pause, delete runners), for admin-api.
 - `secret.proto`: `SecretService` (write-only CI secrets per instance or repository), for admin-api and dash-api.
 - `runner.proto`: `RunnerService`, the protocol between ci-svc and its runners. Nothing in this repo calls it.
