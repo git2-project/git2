@@ -47,6 +47,7 @@ Every PR adds its lines under `## [Unreleased]`: one line per change, starting w
 - internal/jwt: token times (`iat`, `exp`, `nbf`) carry milliseconds, so a token issued in the same second as a disable is told apart
 - contracts: dash-api `FileDiff.patch` is an empty string, not null, when only the mode or the name changed (git2-codeplane ADR 0013 review) (#32)
 - docs: Project Plan v1.1: repository creation and deletion now in D-01, D-02, T-05, T-06, WBS-5.1, WBS-6.1 and WBS-17.2; effort distribution table in Section 3 (development, testing, documentation, project management)
+- docs: Requirements Specification replaced with the shortened, reviewed text from #33: FRs reworded as "The system shall … when …", one pipeline per pushed branch or tag (FR-51, US-03, UC-21), `runner_system_failure` (FR-61), paused runners take no new jobs (FR-67), backup encryption and container scope restored (NFR-05, NFR-35) (#55)
 
 ### Fixed
 - git2 core: per-IP rate limits see the client behind the gateway: `X-Real-IP` is used only on connections from `TRUSTED_PROXY_CIDRS` (`internal/realip`), never from anyone else (git2-deploy B-02)
