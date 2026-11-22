@@ -19,7 +19,7 @@
 
 **git2** is an open-source Git platform that an organization installs on its own servers with one command. Go microservices sit behind one HTTPS gateway, with two planes: **Dash** for developers (repositories, merge requests, issues, CI/CD) and **Admin** for administrators (users, SSO, runners, settings, backups). An encrypted backup restores the whole instance on a new server, and a Python CLI and local MCP server serve developers and AI agents.
 
-This document is the Requirements Specification (WBS-18.4), traced to the Project Charter (05.10.2026) and Project Plan v1.0 (19.10.2026). It contains FR-01–FR-100, NFR-01–NFR-35, UT-01–UT-09, P-01–P-05, SC-01–SC-13, US-01–US-42 and UC-01–UC-31.
+This document is the Requirements Specification (WBS-18.4), traced to the Project Charter (05.10.2026) and Project Plan v1.1 (19.10.2026). It contains FR-01–FR-100, NFR-01–NFR-35, UT-01–UT-09, P-01–P-05, SC-01–SC-13, US-01–US-42 and UC-01–UC-31.
 
 - Every FR names its task (`T-##`), deliverable (`D-##`) and acceptance condition.
 - Every NFR is measured against Project Plan §1.4 thresholds.
@@ -59,46 +59,46 @@ Open details come from merged contracts and migrations, or are stated as assumpt
 | FR-11 | T-02 | D-01, D-02, D-03 | Sign-out shall revoke the access token and session at once. | Must | `GET /api/auth/me` with the old token returns 401. |
 | FR-12 | T-02 | D-01 | Services shall return 401 for expired, revoked, re-signed or expiry-less tokens. | Must | JWT tests incl. `alg: none`; routes use `RequireAuth`. |
 | FR-13 | T-02 | D-01 | Unknown email and wrong password shall give the same error; a disabled account gets its own error. | Must | API tests per case; repeated failures from one IP get 429. |
-| FR-14 | T-03 | D-01, D-03 | Admins shall create, edit, disable and re-enable accounts; disabling blocks sign-in, refresh and PATs. | Must | Disabled user: sign-in 403, refresh 401, PAT 401 (WBS-3.1). |
-| FR-15 | T-03 | D-01, D-03 | Admins shall manage organizations, teams and Read/Write/Maintain roles. | Must | Admin E2E creates and reads them back (WBS-3.1). |
+| FR-14 | T-03 | D-01, D-03 | The system shall create, edit, disable and re-enable accounts when an admin requests it; a disabled account cannot sign in, refresh or use PATs. | Must | Disabled user: sign-in 403, refresh 401, PAT 401 (WBS-3.1). |
+| FR-15 | T-03 | D-01, D-03 | The system shall create and update organizations, teams and Read/Write/Maintain roles when an admin requests it. | Must | Admin E2E creates and reads them back (WBS-3.1). |
 | FR-16 | T-03 | D-01 | The server shall enforce permissions on every call with 403; unreadable repositories return 404 (FR-97). | Must | Matrix of allowed and denied roles per endpoint (§1.4). |
-| FR-17 | T-03 | D-01, D-03 | Users shall create scoped PATs (read-only, read-write), shown once and stored hashed. | Must | DB holds hashes; read-only cannot write (WBS-3.2). |
-| FR-18 | T-03 | D-01, D-03 | Users shall list and revoke PATs; revocation is immediate. | Must | Revoked token fails on API and `git fetch` (WBS-3.2). |
-| FR-19 | T-03 | D-01, D-03 | Users shall manage SSH keys, shown with fingerprints. | Must | Malformed and duplicate keys rejected (WBS-3.2). |
+| FR-17 | T-03 | D-01, D-03 | The system shall issue a scoped PAT (read-only or read-write) when a user requests one, show it once and store it hashed. | Must | DB holds hashes; read-only cannot write (WBS-3.2). |
+| FR-18 | T-03 | D-01, D-03 | The system shall list a user's PATs and revoke one immediately when the user requests it. | Must | Revoked token fails on API and `git fetch` (WBS-3.2). |
+| FR-19 | T-03 | D-01, D-03 | The system shall add, list and delete a user's SSH keys, shown with fingerprints, when the user requests it. | Must | Malformed and duplicate keys rejected (WBS-3.2). |
 | FR-20 | T-03 | D-01, D-03 | There shall be no self-registration; accounts come from admins, the wizard, or OIDC/LDAP. | Must | Release spec has no unauthenticated account creation. |
-| FR-21 | T-04 | D-01, D-03 | Admins shall configure OIDC (issuer, client ID, secret), checked by discovery. | Must | Keycloak connects; a wrong issuer is refused (WBS-4.1). |
+| FR-21 | T-04 | D-01, D-03 | The system shall save the OIDC settings (issuer, client ID, secret) when an admin submits them and discovery succeeds. | Must | Keycloak connects; a wrong issuer is refused (WBS-4.1). |
 | FR-22 | T-04 | D-01, D-02, D-03 | OIDC sign-in shall create an account or link one with the same verified email. | Must | Keycloak: create, reuse, link (WBS-4.1). |
-| FR-23 | T-04 | D-01, D-03 | Admins shall configure and test LDAP (URL, bind account, search bases) for sign-in. | Must | OpenLDAP user signs in; wrong password refused (WBS-4.2). |
+| FR-23 | T-04 | D-01, D-03 | The system shall save and test the LDAP sign-in settings (URL, bind account, search bases) when an admin submits them. | Must | OpenLDAP user signs in; wrong password refused (WBS-4.2). |
 | FR-24 | T-04 | D-01, D-03 | LDAP groups shall map to teams, synced at each sign-in. | Must | Group change updates team membership (WBS-4.2). |
-| FR-25 | T-05 | D-01, D-02 | Users shall create repositories (default branch `main`). Names: 1–100 of letters, digits, `.`, `_`, `-`, no leading `.`/`-`, no `.git` suffix, unique per owner ignoring case. | Must | `Api` beside `api`, `.hidden`, `app.git` and 101 chars are refused (WBS-5.1). |
-| FR-26 | T-05 | D-01, D-02 | Maintain users shall delete a repository by typing its name; the name is reusable at once. | Must | Clone fails; same name recreated (WBS-5.1). |
-| FR-27 | T-05, T-03 | D-01 | `git` shall clone, fetch and push over HTTPS with username and PAT. | Must | Real `git` CLI tests (WBS-5.2, M1). |
+| FR-25 | T-05 | D-01, D-02 | The system shall create a repository (default branch `main`) when a user requests it. Names: 1–100 of letters, digits, `.`, `_`, `-`, no leading `.`/`-`, no `.git` suffix, unique per owner ignoring case. | Must | `Api` beside `api`, `.hidden`, `app.git` and 101 chars are refused (WBS-5.1). |
+| FR-26 | T-05 | D-01, D-02 | The system shall delete a repository when a Maintain user confirms by typing its name; the name is reusable at once. | Must | Clone fails; same name recreated (WBS-5.1). |
+| FR-27 | T-05, T-03 | D-01 | The system shall serve `git` clone, fetch and push over HTTPS when the client signs in with username and PAT. | Must | Real `git` CLI tests (WBS-5.2, M1). |
 | FR-28 | T-05 | D-01 | Fetch shall need Read and push Write. | Must | Per-role tests in the FR-16 matrix. |
-| FR-29 | T-05 | D-01 | `git` shall work over SSH with registered keys (FR-19). | Could (optional, WBS-5.3) | Known key succeeds, unknown fails (WBS-5.3). |
+| FR-29 | T-05 | D-01 | The system shall serve `git` over SSH when the client uses a registered key (FR-19). | Could (optional, WBS-5.3) | Known key succeeds, unknown fails (WBS-5.3). |
 | FR-30 | T-06 | D-02 | The file tree and highlighted files shall be browsable per branch or tag, with line links. Binary, LFS and >1 MiB files show a download link. | Must | E2E with a binary, a 2 MiB and an LFS file (WBS-6.1). |
 | FR-97 | T-06 | D-02 | One owner's readable repositories shall list by name, 50 per page. | Must | 60 repos load in two pages; an unreadable repo returns 404 (WBS-6.1). |
 | FR-98 | T-06 | D-02 | Empty repositories shall show the clone URL and first-push commands. | Should | After the commands, the tree shows (WBS-6.1). |
 | FR-31 | T-06 | D-02 | History (newest first) and commit diffs shall show per branch, directory or file; truncation is noted above 300 files. | Must | Matches `git log` and `git show` (WBS-6.1). |
 | FR-32 | T-06 | D-02 | Branches and tags shall list with their latest commit and be switchable. | Must | UI test (WBS-6.1). |
 | FR-33 | T-06 | D-02 | Default-branch text search shall return matching lines. | Could (optional, WBS-6.2) | Results equal `git grep` (WBS-6.2). |
-| FR-34 | T-07 | D-01, D-02 | Maintain users shall set protected-branch push, merge and approval rules. | Must | Rules save and read back (WBS-7.1). |
+| FR-34 | T-07 | D-01, D-02 | The system shall save protected-branch push, merge and approval rules when a Maintain user sets them. | Must | Rules save and read back (WBS-7.1). |
 | FR-35 | T-07 | D-01 | Disallowed pushes, all force-pushes and deletions of protected branches shall be rejected. | Must | Refs unchanged; `git` shows the reason (WBS-7.1). |
 | FR-36 | T-07, T-08 | D-01, D-02 | Protected-branch merges shall need an allowed user and enough approvals. | Must | Refused, then allowed after approval (WBS-7.1, WBS-8.1). |
 | FR-37 | T-07 | D-01 | Git LFS shall work over HTTPS with Git permissions, without locking. | Must | Read-only user cannot upload (WBS-7.1). |
-| FR-38 | T-08 | D-01, D-02 | Write users shall open, close and reopen MRs (`!n`) after a diff preview. | Must | E2E (WBS-8.2). |
+| FR-38 | T-08 | D-01, D-02 | The system shall open, close and reopen MRs (`!n`) when a Write user requests it, showing a diff preview before opening. | Must | E2E (WBS-8.2). |
 | FR-39 | T-08 | D-01, D-02 | MR commits and diff shall update on source pushes. | Must | E2E (WBS-8.1, WBS-8.2). |
-| FR-40 | T-08 | D-01, D-02 | Read users shall add line, general and reply comments; changed lines mark comments outdated. | Must | E2E survives reload (WBS-8.2). |
-| FR-41 | T-08 | D-01, D-02 | Write users shall approve and unapprove; approvers are shown. | Must | E2E (WBS-8.2, M2). |
+| FR-40 | T-08 | D-01, D-02 | The system shall save line, general and reply comments when a Read user posts them, and mark a comment outdated when its lines change. | Must | E2E survives reload (WBS-8.2). |
+| FR-41 | T-08 | D-01, D-02 | The system shall record an approval or its withdrawal when a Write user gives it, and show the approvers. | Must | E2E (WBS-8.2, M2). |
 | FR-42 | T-08 | D-01, D-02 | Merges shall use merge commit, squash or fast-forward. | Must | History checked with `git log` (WBS-8.1). |
 | FR-43 | T-08 | D-01, D-02 | Conflicts and impossible fast-forwards shall be detected; a blocked merge disables the button with its reason. | Must | Target ref unchanged; files listed (WBS-8.1). |
 | FR-44 | T-08 | D-01, D-02 | MRs shall filter by open, merged or closed. | Must | UI/API test (WBS-8.2). |
-| FR-45 | T-09 | D-01, D-02 | Read users shall create and comment on issues (`#n`); the author or Write users close them. | Must | E2E (WBS-9.1). |
-| FR-46 | T-09 | D-01, D-02 | Write users shall set labels, milestones and assignees, logged in history. | Must | Each change appears (WBS-9.1). |
+| FR-45 | T-09 | D-01, D-02 | The system shall create issues (`#n`) and comments when a Read user submits them, and close an issue when its author or a Write user requests it. | Must | E2E (WBS-9.1). |
+| FR-46 | T-09 | D-01, D-02 | The system shall set labels, milestones and assignees when a Write user changes them, and log each change in the issue history. | Must | Each change appears (WBS-9.1). |
 | FR-47 | T-09 | D-01, D-02 | Issue filters shall persist in the URL. | Should | Copied URL shows the same list. |
 | FR-48 | T-09 | D-01, D-02 | An `@username` mention shall notify that user once. | Must | Unknown names get none (WBS-9.1). |
 | FR-49 | T-09 | D-01, D-02 | Unread counters and the notification list shall update live; notifications can be marked read. | Must | Two-session E2E without reload. |
 | FR-50 | T-10 | D-04 | Pipelines shall be read from `.git2-ci.yml`, published as a JSON schema. | Must | Schema accepts examples, rejects bad files (WBS-10.1). |
-| FR-51 | T-10, T-01 | D-04 | A push with `.git2-ci.yml` shall create exactly one pipeline. | Must | Redelivered event yields one (WBS-10.3). |
+| FR-51 | T-10, T-01 | D-04 | The system shall create one pipeline for each created or updated branch or tag that has `.git2-ci.yml` when a push arrives; deleted refs get none. | Must | A two-branch push yields two; a redelivered event adds none (WBS-10.3). |
 | FR-52 | T-10 | D-04, D-02 | Invalid YAML shall fail the pipeline with the error shown. | Must | Error visible (WBS-10.3). |
 | FR-53 | T-10 | D-04 | Stages shall run in order, jobs in parallel; a failure skips later stages. | Must | Three-stage test (WBS-10.3, M3). |
 | FR-54 | T-10, T-11 | D-04 | Each job shall run once on a matching unpaused runner, surviving Redis or ci-svc restarts. | Must | Killing Redis loses no job (WBS-10.3, NFR-21). |
@@ -107,14 +107,14 @@ Open details come from merged contracts and migrations, or are stated as assumpt
 | FR-57 | T-10 | D-04, D-02 | Artifacts shall be stored and downloadable by Read users. | Must | Checksums match (WBS-10.4). |
 | FR-58 | T-10 | D-02 | Pipeline list, stage graph and job pages shall exist. | Must | E2E (WBS-10.5, M3). |
 | FR-59 | T-10, T-08 | D-02 | MRs shall show and link the latest source pipeline status; failures warn at the merge button. | Must | E2E (WBS-10.5). |
-| FR-60 | T-10 | D-04, D-02 | Write users shall cancel and retry pipelines. | Must | Tests; `retry_pipeline` uses it (FR-88). |
-| FR-61 | T-10 | D-04 | Failed jobs shall show `script_failure`, `timeout`, `image_pull_failure` or `runner_lost`. | Should | One test per reason. |
-| FR-62 | T-10 | D-04, D-02, D-03 | Maintain users (per repo) and admins (instance) shall define secret CI variables: write-only, encrypted, injected at job start. | Should | Not readable back; DB holds ciphertext. |
+| FR-60 | T-10 | D-04, D-02 | The system shall cancel or retry a pipeline when a Write user requests it. | Must | Tests; `retry_pipeline` uses it (FR-88). |
+| FR-61 | T-10 | D-04 | Failed jobs shall show `script_failure`, `timeout`, `image_pull_failure`, `runner_system_failure` or `runner_lost`. | Should | One test per reason. |
+| FR-62 | T-10 | D-04, D-02, D-03 | The system shall store a secret CI variable when a Maintain user (per repo) or an admin (instance) defines it: write-only, encrypted, injected at job start. | Should | Not readable back; DB holds ciphertext. |
 | FR-63 | T-10 | D-04 | Declared caches shall restore per branch. | Could (optional, WBS-10.6) | Second run finds the cache (WBS-10.6). |
 | FR-64 | T-11 | D-03 | A setup wizard shall create the first admin, then disappear. | Must | Wizard URL then shows sign-in (WBS-11.1). |
-| FR-65 | T-11 | D-03 | Admins shall edit instance, auth, runner and backup schedule/retention settings (FR-73, FR-100); destination and `age` key are read-only from `git2.yaml`. | Must | Change is audited (WBS-11.1). |
-| FR-66 | T-11, T-10 | D-03, D-04 | Admins shall issue one-time expiring runner tokens, stored hashed. | Must | Reused or expired tokens fail (WBS-11.1). |
-| FR-67 | T-11, T-10 | D-03, D-04 | Admins shall list runners (online, offline, paused) and pause, resume or remove them; those get no new jobs. | Must | Paused runner's jobs move (WBS-11.1). |
+| FR-65 | T-11 | D-03 | The system shall save instance, auth, runner and backup schedule/retention settings (FR-73, FR-100) when an admin edits them; destination and `age` key are read-only from `git2.yaml`. | Must | Change is audited (WBS-11.1). |
+| FR-66 | T-11, T-10 | D-03, D-04 | The system shall issue a one-time expiring runner token when an admin requests one, and store it hashed. | Must | Reused or expired tokens fail (WBS-11.1). |
+| FR-67 | T-11, T-10 | D-03, D-04 | The system shall list runners (online, offline, paused) and pause, resume or remove one when an admin requests it. A paused runner takes no new jobs; queued jobs go to other runners. | Must | A paused runner finishes its running job and gets no new one (WBS-11.1). |
 | FR-68 | T-11 | D-03 | Every admin action shall be audited (actor, action, time, object), immutable, and searchable by actor, action and time. | Must | No update or delete endpoint (WBS-11.2). |
 | FR-69 | T-11 | D-03 | A health dashboard shall use FR-07. | Must | Stopped service shows unhealthy (WBS-11.2). |
 | FR-70 | T-12 | D-05 | Snapshots shall hold all schemas, repos, LFS, `git2.yaml` and secrets in one `age` archive with a per-file manifest and an archive checksum (FR-76). | Must | Manifest and archive checksums match (WBS-12.1). |
@@ -171,7 +171,7 @@ Open details come from merged contracts and migrations, or are stated as assumpt
 | NFR-02 | Security (credentials) | Passwords are stored only as salted slow hashes. | auth-svc; FR-08, FR-14 | Unit tests; W9 log review. |
 | NFR-03 | Security (tokens) | JWTs are HS256 with expiry; other tokens are stored hashed. | auth-svc, ci-svc; FR-09, FR-12, FR-17, FR-66 | Tampered, `alg: none`, no-expiry tests. |
 | NFR-04 | Security (transport) | External traffic uses TLS; `git2ctl install` allows plain HTTP only on loopback. | Gateway, git2ctl; FR-02, FR-77 | TLS check; HTTP refused. |
-| NFR-05 | Security (backups) | Snapshots are `age`-encrypted; the private key never enters the bucket. | backup-svc; FR-70, FR-75 | Keyless open fails. |
+| NFR-05 | Security (backups) | Snapshots are `age`-encrypted before they leave the server; the private key is never stored in the snapshot or the bucket. | backup-svc; FR-70, FR-75 | Keyless open fails; the bucket holds no key. |
 | NFR-06 | Security (CI secrets) | CI secrets use AES-256-GCM, key outside the database. | ci-svc; FR-62 | DB holds ciphertext. |
 | NFR-07 | Security (CI isolation) | Jobs run unprivileged and limited, one container each, on a separate VM. | git2-runner; FR-55 | `docker inspect` (R-05). |
 | NFR-08 | Security (repository hygiene) | No secrets are committed; secret scanning and push protection are on. | Project repositories | No open alerts at v1.0.0. |
@@ -201,7 +201,7 @@ Open details come from merged contracts and migrations, or are stated as assumpt
 | NFR-32 | Observability | Services export OpenTelemetry traces and Prometheus metrics, with Grafana dashboards. | Whole system | Integration instance. |
 | NFR-33 | Openness / licensing | Source is public under an OSI-approved license. | All git2 repositories | LICENSE at v1.0.0. |
 | NFR-34 | Design constraint (technology) | Charter stack: Go, PostgreSQL, Redis, React/TypeScript, Python. | Whole system | Design Report review. |
-| NFR-35 | Security (containers) | Containers run non-root, read-only root, no capabilities, `no-new-privileges`. | All images; FR-77, FR-80 | Compose smoke test. |
+| NFR-35 | Security (containers) | Every git2 container (not CI job containers, see NFR-07) runs non-root, read-only root, no capabilities, `no-new-privileges`; a service that writes gets a volume or tmpfs. | All images; FR-77, FR-80 | Compose smoke test. |
 
 **Non-functional requirement notes / assumptions:**
 
@@ -343,7 +343,7 @@ From `/api/docs` Kerem scripts twenty repositories. Bursts get 429 with `Retry-A
 |---|---|---|---|
 | SC-13 | WBS-1.1 | **US-01**: As a client developer, I want an OpenAPI 3 contract so that I can generate clients. | FR-01 |
 | SC-01 | WBS-1.2 | **US-02**: As a user, I want one HTTPS address so that traffic is encrypted. | FR-02, FR-03 |
-| SC-04 | WBS-1.3 | **US-03**: As a developer, I want exactly one pipeline per push so that none is skipped. | FR-04, FR-51 |
+| SC-04 | WBS-1.3 | **US-03**: As a developer, I want one pipeline for each branch or tag I push so that none is skipped. | FR-04, FR-51 |
 | SC-13 | WBS-1.4 | **US-04**: As an administrator, I want rate limits so that one script cannot slow git2. | FR-05, FR-06 |
 | SC-03 | WBS-2.1 | **US-05**: As a developer, I want safe sessions so that stolen refresh tokens fail. | FR-09–FR-13 |
 | SC-01 | WBS-2.2 | **US-06**: As an administrator, I want one sign-in page so that it covers both planes. | FR-08, FR-11 |
@@ -930,7 +930,7 @@ Every development task of Project Plan §1.3 is covered. Optional items FR-29, F
 
 **Main success flow:**
 
-1. **Operator:** Runs `git2ctl install <host>` (FR-92).
+1. **Operator:** Runs `git2ctl install <host>` (FR-77), following the install guide (FR-92).
 2. **System:** Checks Docker, Compose, free ports 80/443, architecture.
 3. **System:** Writes `git2.yaml` with host name and new secrets.
 4. **System:** Pulls images for the architecture.
@@ -1685,7 +1685,7 @@ Every development task of Project Plan §1.3 is covered. Optional items FR-29, F
 1. **Developer:** Pushes (UC-11).
 2. **System:** Delivers `repo.pushed` to ci-svc (FR-04).
 3. **System:** Validates `.git2-ci.yml` against the schema (FR-50).
-4. **System:** Creates one pipeline; queues stage 1 (FR-51, FR-53).
+4. **System:** Creates one pipeline per created or updated branch or tag; queues stage 1 (FR-51, FR-53).
 5. **Runner:** Polls; gets a matching job with image, script, variables, secrets (FR-54, FR-62).
 6. **Runner:** Runs it in a new unprivileged, CPU/memory-limited container; streams log; uploads artifacts (FR-55).
 7. **Runner:** Reports exit status; job succeeded; container removed.
@@ -1707,6 +1707,7 @@ Every development task of Project Plan §1.3 is covered. Optional items FR-29, F
 - **E2: Time limit (at step 6):** Failed `timeout`; later stages skipped.
 - **E3: Image pull fails (at step 6):** Failed `image_pull_failure`.
 - **E4: Runner lost (at step 6):** Lease expires; failed `runner_lost` (FR-61).
+- **E6: Runner breaks (at step 6):** The runner itself fails, not the script; failed `runner_system_failure` (FR-61).
 - **E5: Redis or ci-svc restart (any step):** State kept; pipeline continues (FR-54, NFR-21).
 
 **Post-condition(s):**
