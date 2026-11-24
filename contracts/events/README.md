@@ -4,10 +4,10 @@ This directory holds no `.proto` files on purpose. The contract that carries dom
 
 | | |
 |---|---|
-| Source | [`proto/events/v1/`](https://github.com/git2-project/git2-codeplane/tree/v0.3.0/proto/events/v1) in git2-codeplane |
-| Pinned version | `v0.3.0` |
+| Source | [`proto/events/v1/`](https://github.com/git2-project/git2-codeplane/tree/v0.4.0/proto/events/v1) in git2-codeplane |
+| Pinned version | `v0.4.0` |
 | Protobuf package | `events.v1` |
-| Decisions | [git2-codeplane ADR 0014](https://github.com/git2-project/git2-codeplane/blob/v0.3.0/docs/decisions/0014-outbox-relay.md), git2-runner ADR 0010 |
+| Decisions | [git2-codeplane ADR 0014](https://github.com/git2-project/git2-codeplane/blob/v0.4.0/docs/decisions/0014-outbox-relay.md), git2-runner ADR 0010 |
 | Owner | Git Core lane (Abdullah Akcan), agreed with the Pipelines lane (Osman Akıncı) |
 
 ## What it contains
@@ -42,7 +42,7 @@ gRPC also answers `UNIMPLEMENTED` when a server does not serve `EventSink` at al
 **Go consumers** import the generated code, which is committed in git2-codeplane:
 
 ```sh
-go get github.com/git2-project/git2-codeplane@v0.3.0
+go get github.com/git2-project/git2-codeplane@v0.4.0
 ```
 
 ```go
@@ -63,7 +63,7 @@ eventsv1.RegisterEventSinkServer(grpcServer, &sink{}) // on the internal gRPC po
 **Mocks and other languages** generate from the pinned tag with buf:
 
 ```sh
-buf generate "https://github.com/git2-project/git2-codeplane.git#tag=v0.3.0,subdir=proto"
+buf generate "https://github.com/git2-project/git2-codeplane.git#tag=v0.4.0,subdir=proto"
 ```
 
 ## Changing it
