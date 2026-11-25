@@ -1,12 +1,13 @@
 // Command git2 is the single binary that runs git2's control-plane services.
-// Today that is auth-svc and admin-api; the other services mount on the same
-// router as they land.
+// Today that is auth-svc, admin-api and dash-api; the other services mount on
+// the same router as they land.
 package main
 
 import (
 	"context"
 	"errors"
 	"flag"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -14,8 +15,10 @@ import (
 	"syscall"
 	"time"
 
+	gitv1 "github.com/git2-project/git2-codeplane/gen/go/git/v1"
 	adminapi "github.com/git2-project/git2/admin-api"
 	authsvc "github.com/git2-project/git2/auth-svc"
+	dashapi "github.com/git2-project/git2/dash-api"
 	"github.com/git2-project/git2/internal/cache"
 	"github.com/git2-project/git2/internal/config"
 	"github.com/git2-project/git2/internal/database"
@@ -24,6 +27,8 @@ import (
 	"github.com/git2-project/git2/internal/realip"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 func main() {
@@ -93,6 +98,28 @@ func run(ctx context.Context, cfg *config.Config) error {
 	}
 	admin := adminapi.NewHandler(adminapi.Deps{Users: store, Teams: store, JWT: jwtMgr, Redis: rdb})
 
+	// git-svc's gRPC port is reachable only on the instance's internal
+	// network, so plain gRPC, as in the gateway. NewClient dials on first use:
+	// git2 starts while git-svc is down, and Dash answers 503 until it is up.
+	gitConn, err := grpc.NewClient(cfg.GitSvcGRPCAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		return fmt.Errorf("git-svc client: %w", err)
+	}
+	defer gitConn.Close()
+	dash, err := dashapi.NewHandler(dashapi.Deps{
+		Users:       store,
+		Teams:       store,
+		Repos:       gitv1.NewRepositoryServiceClient(gitConn),
+		Refs:        gitv1.NewRefServiceClient(gitConn),
+		Commits:     gitv1.NewCommitServiceClient(gitConn),
+		JWT:         jwtMgr,
+		Redis:       rdb,
+		ExternalURL: cfg.ExternalURL,
+	})
+	if err != nil {
+		return err
+	}
+
 	r := chi.NewRouter()
 	// realip first, so the logger and the rate limits see the client, not the gateway.
 	r.Use(realip.FromTrusted(cfg.TrustedProxies), middleware.RequestID, middleware.Logger, middleware.Recoverer, middleware.Timeout(30*time.Second))
@@ -102,6 +129,7 @@ func run(ctx context.Context, cfg *config.Config) error {
 	r.Route("/api", func(r chi.Router) {
 		auth.Mount(r)
 		admin.Mount(r)
+		dash.Mount(r)
 	})
 
 	srv := &http.Server{
