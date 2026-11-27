@@ -137,9 +137,29 @@ type fakeCommits struct {
 	getRawBlob  func(*gitv1.GetRawBlobRequest, grpc.ServerStreamingServer[gitv1.GetRawBlobResponse]) error
 	listCommits func(*gitv1.ListCommitsRequest) (*gitv1.ListCommitsResponse, error)
 	getCommit   func(*gitv1.GetCommitRequest) (*gitv1.GetCommitResponse, error)
+
+	mu       sync.Mutex
+	deadline time.Time // of the last GetTree or ListCommits, as git-svc sees it
+}
+
+// saveDeadline keeps the deadline that dash-api's call carried over gRPC.
+func (f *fakeCommits) saveDeadline(ctx context.Context) {
+	d, _ := ctx.Deadline()
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.deadline = d
+}
+
+// lastDeadline returns the deadline saved by the last GetTree or ListCommits;
+// zero when the call had none.
+func (f *fakeCommits) lastDeadline() time.Time {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.deadline
 }
 
 func (f *fakeCommits) GetTree(ctx context.Context, req *gitv1.GetTreeRequest) (*gitv1.GetTreeResponse, error) {
+	f.saveDeadline(ctx)
 	if f.getTree == nil {
 		return f.UnimplementedCommitServiceServer.GetTree(ctx, req)
 	}
@@ -161,6 +181,7 @@ func (f *fakeCommits) GetRawBlob(req *gitv1.GetRawBlobRequest, s grpc.ServerStre
 }
 
 func (f *fakeCommits) ListCommits(ctx context.Context, req *gitv1.ListCommitsRequest) (*gitv1.ListCommitsResponse, error) {
+	f.saveDeadline(ctx)
 	if f.listCommits == nil {
 		return f.UnimplementedCommitServiceServer.ListCommits(ctx, req)
 	}

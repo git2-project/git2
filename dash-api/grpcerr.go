@@ -15,7 +15,13 @@ import (
 
 // rpcTimeout bounds each unary call to git-svc. Streams are bounded by the
 // request's own deadline instead.
-const rpcTimeout = 10 * time.Second
+//
+// It must leave git-svc room for its own budgets: GetTree lists the
+// directory and then gives last_commit 10 s of its own, answering without
+// it when that runs out, but only while the caller's deadline holds (ADR
+// 0013). 25 s covers that and a long ListCommits with a path, and stays
+// below git-svc's 30 s per git call and the router's 30 s Timeout.
+const rpcTimeout = 25 * time.Second
 
 func rpcContext(r *http.Request) (context.Context, context.CancelFunc) {
 	return context.WithTimeout(r.Context(), rpcTimeout)
