@@ -580,6 +580,11 @@ a:focus-visible {
   border-bottom: 1px solid var(--g2-border);
 }
 
+a.g2-brand {
+  color: inherit;
+  text-decoration: none;
+}
+
 .g2-topbar-actions {
   display: flex;
   align-items: center;

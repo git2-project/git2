@@ -1,5 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { getBlob, getCommit, getRaw, getTree, listBranches, listCommits, listRepositories } from "./index";
+import {
+  createRepository,
+  deleteRepository,
+  getBlob,
+  getCommit,
+  getRaw,
+  getTree,
+  listBranches,
+  listCommits,
+  listRepositories,
+} from "./index";
 import { saveTokens } from "./tokens";
 
 const fetchMock = vi.fn<typeof fetch>();
@@ -26,6 +36,31 @@ afterEach(() => {
 });
 
 describe("repository client", () => {
+  it("creates a repository with a JSON body", async () => {
+    fetchMock.mockResolvedValueOnce(json({ full_name: "ada/web-shop" }, 201));
+
+    const created = await createRepository({ name: "web-shop", description: "Storefront" });
+
+    expect(created.full_name).toBe("ada/web-shop");
+    expect(calledURL().pathname).toBe("/api/repos");
+    const init = fetchMock.mock.calls[0][1];
+    expect(init?.method).toBe("POST");
+    expect(JSON.parse(String(init?.body))).toEqual({ name: "web-shop", description: "Storefront" });
+  });
+
+  it("deletes a repository and passes a 409 message on", async () => {
+    fetchMock.mockResolvedValueOnce(new Response(null, { status: 204 }));
+    await deleteRepository(repo);
+    expect(calledURL().pathname).toBe("/api/repos/ada/billing-service");
+    expect(fetchMock.mock.calls[0][1]?.method).toBe("DELETE");
+
+    fetchMock.mockResolvedValueOnce(json({ error: "repository web-shop already exists" }, 409));
+    await expect(createRepository({ name: "web-shop" })).rejects.toMatchObject({
+      status: 409,
+      message: "repository web-shop already exists",
+    });
+  });
+
   it("sends the bearer token and leaves empty options out of the query", async () => {
     fetchMock.mockResolvedValueOnce(json({ repositories: [] }));
 

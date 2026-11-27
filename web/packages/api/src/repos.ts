@@ -8,6 +8,10 @@ import type { components, operations } from "./generated/dash-api";
 type Schemas = components["schemas"];
 
 export type Repository = Schemas["Repository"];
+// The contract gives description and default_branch defaults, so the
+// generated type marks them required; the server fills in what is left out.
+export type CreateRepositoryRequest = Pick<Schemas["CreateRepositoryRequest"], "name"> &
+  Partial<Omit<Schemas["CreateRepositoryRequest"], "name">>;
 export type Branch = Schemas["Branch"];
 export type Tag = Schemas["Tag"];
 export type Tree = Schemas["Tree"];
@@ -77,6 +81,20 @@ export function listRepositories(opts: PageOptions & { owner?: string } = {}): P
 
 export function getRepository(name: RepoName, signal?: AbortSignal): Promise<Repository> {
   return getJSON(url(repoPath(name)), signal);
+}
+
+// createRepository creates an empty repository under the caller's name.
+// git-svc checks the name: a bad one is a 400, a taken one a 409, both with
+// a message to show.
+export async function createRepository(body: CreateRepositoryRequest): Promise<Repository> {
+  const res = await request(url("/repos"), { method: "POST", body, auth: true });
+  return (await res.json()) as Repository;
+}
+
+// deleteRepository deletes a repository and its Git data; it needs maintain
+// access. Callers ask for the name to be typed back first (FR-26).
+export async function deleteRepository(name: RepoName): Promise<void> {
+  await request(url(repoPath(name)), { method: "DELETE", auth: true });
 }
 
 // listBranches lists branches, the default branch first. query filters by
