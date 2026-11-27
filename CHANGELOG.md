@@ -7,6 +7,7 @@ Every PR adds its lines under `## [Unreleased]`: one line per change, starting w
 ## [Unreleased]
 
 ### Added
+- cli: `git2cli.auth`: the credential file (`$XDG_CONFIG_HOME/git2/credentials.json`, 0600 in a 0700 directory, refused when others can read it, never the password), `login` / `logout`, and `SessionAuth`, an `httpx.Auth` that refreshes before expiry or once after a 401 and retries once, single-flight across requests, threads and processes (FR-10)
 - cli: `cli/` Python package `git2cli` with the `git2` command; no arguments opens the Textual terminal UI (an empty shell for now), `git2 --version`, Pilot tests, and a `cli` CI check with ruff, pytest and a pipx install (WBS-14.2)
 - ci: `ci` check on every pull request: gofmt, vet, build, migrations applied to a throwaway Postgres, `go test -race` with the integration tests (#20)
 - ci: `web` check: typecheck, lint, test and build of `web/` (#20)
