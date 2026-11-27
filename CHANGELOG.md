@@ -53,6 +53,7 @@ Every PR adds its lines under `## [Unreleased]`: one line per change, starting w
 - docs: Requirements Specification replaced with the shortened, reviewed text from #33: FRs reworded as "The system shall … when …", one pipeline per pushed branch or tag (FR-51, US-03, UC-21), `runner_system_failure` (FR-61), paused runners take no new jobs (FR-67), backup encryption and container scope restored (NFR-05, NFR-35) (#55)
 
 ### Fixed
+- gateway: a Git request is cut after 5 min with no byte moving either way (the contract's idle timeout), so a client that stops reading or sending no longer holds its connection and the git-svc stream open; works over HTTP/1.1 and HTTP/2 (git2-deploy#27)
 - git2 core: per-IP rate limits see the client behind the gateway: `X-Real-IP` is used only on connections from `TRUSTED_PROXY_CIDRS` (`internal/realip`), never from anyone else (git2-deploy B-02)
 - auth-svc: `password_hash` stored as `text`; email and username enforced lowercase
 - auth-svc: `GET /api/auth/me` answers 503 on a database fault instead of 404

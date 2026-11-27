@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	authsvc "github.com/git2-project/git2/auth-svc"
 	"github.com/google/uuid"
@@ -56,6 +57,9 @@ type GitDeps struct {
 	Repos   Repos
 	Limiter *SignInLimiter
 	GitSvc  *url.URL // git-svc's Smart HTTP port
+	// IdleTimeout cuts a Git request once nothing moved either way for this
+	// long. Zero means GitIdleTimeout; tests shorten it.
+	IdleTimeout time.Duration
 }
 
 func (g *GitDeps) validate() error {
@@ -110,10 +114,17 @@ type gitHandler struct {
 }
 
 func newGitHandler(d GitDeps) *gitHandler {
+	if d.IdleTimeout <= 0 {
+		d.IdleTimeout = GitIdleTimeout
+	}
 	return &gitHandler{deps: d, proxy: newGitProxy(d.GitSvc)}
 }
 
 func (h *gitHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	withIdleDeadline(h.deps.IdleTimeout, w, r, http.HandlerFunc(h.serve))
+}
+
+func (h *gitHandler) serve(w http.ResponseWriter, r *http.Request) {
 	gp, _ := parseGitPath(r.URL.Path)
 	method, ok := gitServices[gp.service]
 	if !ok {
@@ -196,7 +207,8 @@ func gitError(w http.ResponseWriter, status int, msg string) {
 // is added, the client's Authorization (its password) is not passed on, and
 // every write is flushed at once so a clone streams instead of buffering.
 // There is no per-request timeout: git-svc bounds each operation (2 h) and
-// each stalled read or write (5 min).
+// each stalled read or write (5 min), and the gateway cuts a request that
+// stays idle for GitIdleTimeout (withIdleDeadline).
 func newGitProxy(target *url.URL) *httputil.ReverseProxy {
 	p := newProxy(target)
 	base := p.Rewrite
