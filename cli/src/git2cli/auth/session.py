@@ -18,7 +18,6 @@ from collections.abc import AsyncGenerator, Callable, Generator
 from urllib.parse import urlsplit
 
 import httpx
-from filelock import AsyncFileLock, FileLock
 
 from git2cli.auth.store import Credentials, CredentialStore
 
@@ -49,11 +48,17 @@ class AuthUnavailable(Exception):
 
 
 def instance_base(url: str) -> str:
-    """``https://host[:port]`` from what the user typed, or ValueError."""
+    """``https://host[:port]`` from what the user typed, or ValueError. A
+    ``user:password@`` part is dropped, and the input is not echoed back."""
     parts = urlsplit(url.strip())
-    if parts.scheme not in ("http", "https") or not parts.netloc:
-        raise ValueError(f"instance URL must look like https://git2.example.com, got {url!r}")
-    return f"{parts.scheme}://{parts.netloc}"
+    host = parts.netloc.rpartition("@")[2]
+    if parts.scheme not in ("http", "https") or not host:
+        raise ValueError("instance URL must look like https://git2.example.com")
+    return f"{parts.scheme}://{host}"
+
+
+def _same_origin(a: httpx.URL, b: httpx.URL) -> bool:
+    return (a.scheme, a.host, a.port) == (b.scheme, b.host, b.port)
 
 
 def _tokens(response: httpx.Response, now: float) -> tuple[str, str, float]:
@@ -72,6 +77,9 @@ class SessionAuth(httpx.Auth):
     Raises SignedOut when there is no session or auth-svc refuses the
     refresh (the stored tokens are then dropped), and AuthUnavailable when
     auth-svc cannot answer (the tokens are kept).
+
+    Only requests to the signed-in instance get the token; any other host is
+    sent the request untouched.
     """
 
     def __init__(self, store: CredentialStore, *, clock: Clock = time.time) -> None:
@@ -80,11 +88,17 @@ class SessionAuth(httpx.Auth):
 
     def sync_auth_flow(self, request: httpx.Request) -> Generator[httpx.Request, httpx.Response]:
         creds = self._current()
+        if not _same_origin(request.url, httpx.URL(creds.instance_url)):
+            yield request
+            return
+        # Read the body first, so a streamed upload can be sent again after a
+        # 401. (httpx's requires_request_body does this only in the methods
+        # overridden here.)
+        request.read()
         refresh = self._expiring(creds)
         for _ in range(2):  # at most one refresh and one retry
             if refresh:
-                self._store.ensure_directory()
-                with FileLock(self._store.lock_path, mode=0o600):
+                with self._store.lock():
                     creds = yield from self._refresh(creds)
             response = yield self._authorize(request, creds)
             if response.status_code != 401 or refresh:
@@ -95,11 +109,14 @@ class SessionAuth(httpx.Auth):
         self, request: httpx.Request
     ) -> AsyncGenerator[httpx.Request, httpx.Response]:
         creds = self._current()
+        if not _same_origin(request.url, httpx.URL(creds.instance_url)):
+            yield request
+            return
+        await request.aread()  # replayable after a 401, as in sync_auth_flow
         refresh = self._expiring(creds)
         for _ in range(2):  # at most one refresh and one retry
             if refresh:
-                self._store.ensure_directory()
-                async with AsyncFileLock(self._store.lock_path, mode=0o600):
+                async with self._store.async_lock():
                     # An async generator cannot `yield from`; drive _refresh by hand.
                     steps, response = self._refresh(creds), None
                     while True:
@@ -129,7 +146,7 @@ class SessionAuth(httpx.Auth):
         return request
 
     def _refresh(self, seen: Credentials) -> Generator[httpx.Request, httpx.Response, Credentials]:
-        """Runs under both locks. Yields the refresh request, if one is still
+        """Runs under the store's lock. Yields the refresh request, if one is still
         needed, and returns the credentials to use."""
         latest = self._store.load()
         if latest is None:
@@ -141,7 +158,9 @@ class SessionAuth(httpx.Auth):
             f"{latest.instance_url}/api/auth/refresh",
             json={"refresh_token": latest.refresh_token},
         )
-        if response.status_code == 401:
+        # 401: invalid, expired, reused or the account is gone or disabled;
+        # 400: the stored refresh token is empty. Either way it cannot work again.
+        if response.status_code in (400, 401):
             self._store.clear()
             raise SignedOut("the session ended; sign in again")
         if response.status_code != 200:
@@ -178,22 +197,30 @@ async def login(
     me = await client.get(f"{base}/api/auth/me", headers={"Authorization": f"Bearer {access}"})
     if me.status_code != 200:
         raise AuthUnavailable(me.status_code)
-    creds = Credentials(base, me.json()["username"], access, refresh, expires_at)
-    store.save(creds)
+    try:
+        username = me.json()["username"]
+    except (ValueError, KeyError, TypeError) as e:
+        raise AuthUnavailable(me.status_code) from e
+    creds = Credentials(base, username, access, refresh, expires_at)
+    async with store.async_lock():  # never in the middle of another window's refresh
+        store.save(creds)
     return creds
 
 
 async def logout(client: httpx.AsyncClient, store: CredentialStore) -> None:
     """Ends the session on the server and forgets it here. The local tokens
-    are dropped even when auth-svc cannot be reached."""
-    creds = store.load()
-    if creds is None:
-        return
-    try:
-        await client.post(
-            f"{creds.instance_url}/api/auth/logout", json={"refresh_token": creds.refresh_token}
-        )
-    except httpx.TransportError:
-        pass  # the refresh token expires on its own; nothing to retry
-    finally:
-        store.clear()
+    are dropped even when auth-svc cannot be reached. Runs under the store's
+    lock, so it never sends a refresh token another window is rotating."""
+    async with store.async_lock():
+        creds = store.load()
+        if creds is None:
+            return
+        try:
+            await client.post(
+                f"{creds.instance_url}/api/auth/logout",
+                json={"refresh_token": creds.refresh_token},
+            )
+        except httpx.TransportError:
+            pass  # the refresh token expires on its own; nothing to retry
+        finally:
+            store.clear()

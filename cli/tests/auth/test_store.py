@@ -8,6 +8,7 @@ from git2cli.auth.store import (
     Credentials,
     CredentialStore,
     InsecureCredentialsFile,
+    InvalidCredentialsFile,
     default_directory,
 )
 
@@ -60,3 +61,40 @@ def test_mode_check_can_be_off_for_windows(tmp_path):
 def test_default_directory_follows_xdg():
     assert default_directory({"XDG_CONFIG_HOME": "/cfg"}) == Path("/cfg/git2")
     assert default_directory({}, home=Path("/home/ada")) == Path("/home/ada/.config/git2")
+
+
+@pytest.mark.parametrize("content", ["", "{", "{}", '{"instance_url": "x"}', "[1]"])
+def test_a_file_git2_did_not_write_asks_to_sign_in_again(tmp_path, content):
+    store = CredentialStore(tmp_path / "git2")
+    store.save(CREDS)
+    store.path.write_text(content)
+    with pytest.raises(InvalidCredentialsFile, match="sign in again"):
+        store.load()
+
+
+@posix_only
+def test_a_symlink_in_place_of_the_file_is_refused(tmp_path):
+    store = CredentialStore(tmp_path / "git2")
+    store.ensure_directory()
+    elsewhere = tmp_path / "elsewhere.json"
+    CredentialStore(tmp_path / "other").save(CREDS)
+    elsewhere.write_text((tmp_path / "other" / "credentials.json").read_text())
+    elsewhere.chmod(0o600)
+    store.path.symlink_to(elsewhere)
+    with pytest.raises(InvalidCredentialsFile):
+        store.load()
+
+
+@posix_only
+def test_an_existing_loose_directory_is_tightened(tmp_path):
+    directory = tmp_path / "git2"
+    directory.mkdir(mode=0o755)
+    directory.chmod(0o755)
+    CredentialStore(directory).save(CREDS)
+    assert mode(directory) == 0o700
+
+
+def test_repr_never_shows_the_tokens():
+    text = repr(CREDS)
+    assert "access-1" not in text and "refresh-1" not in text
+    assert "ada" in text

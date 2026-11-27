@@ -12,6 +12,7 @@ from git2cli.auth.session import (
     BadCredentials,
     SessionAuth,
     SignedOut,
+    instance_base,
     login,
     logout,
 )
@@ -246,3 +247,151 @@ async def test_logout_ends_the_session_and_forgets_it(store):
         await logout(c, store)
     assert store.load() is None
     assert "refresh-1" not in svc.refresh
+
+
+async def test_the_token_never_goes_to_another_host(store):
+    seen = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(200)
+
+    signed_in(store, expires_in=1)  # expiring: a refresh would also be a leak
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(handler), auth=SessionAuth(store, clock=clock)
+    ) as c:
+        for url in [
+            "https://evil.example/api/thing",
+            "http://git2.example.com/api/thing",  # same host, other scheme
+            "https://git2.example.com:8443/api/thing",  # same host, other port
+        ]:
+            await c.get(url)
+    assert [r.url.host for r in seen] == ["evil.example", "git2.example.com", "git2.example.com"]
+    assert all("Authorization" not in r.headers for r in seen)
+
+
+class StreamingTransport(httpx.AsyncBaseTransport):
+    """Reads request bodies chunk by chunk, as a network transport does.
+    httpx.MockTransport reads and caches the whole body first, which would
+    make any body replayable and the test below pass for the wrong reason."""
+
+    def __init__(self, svc: FakeAuthSvc) -> None:
+        self.svc = svc
+        self.bodies: list[bytes] = []
+
+    async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
+        body = b"".join([chunk async for chunk in request.stream])
+        if request.url.path == "/api/thing":
+            self.bodies.append(body)
+        status, hdrs, payload = self.svc.respond(
+            request.method, request.url.path, request.headers, body
+        )
+        return httpx.Response(status, headers=hdrs, json=payload)
+
+
+async def test_a_streamed_body_is_sent_again_on_the_retry(store):
+    svc = FakeAuthSvc()
+    signed_in(store, access="revoked")
+    transport = StreamingTransport(svc)
+
+    async def chunks():
+        yield b"hello "
+        yield b"world"
+
+    async with httpx.AsyncClient(
+        transport=transport, auth=SessionAuth(store, clock=clock), base_url=URL
+    ) as c:
+        r = await c.post("/api/thing", content=chunks())
+    assert r.status_code == 200
+    assert transport.bodies == [b"hello world", b"hello world"]
+
+
+async def test_a_refresh_400_signs_out(store):
+    svc = FakeAuthSvc(refresh_status=400)
+    signed_in(store, access="revoked")
+    async with client(svc, store) as c:
+        with pytest.raises(SignedOut):
+            await c.get("/api/thing")
+    assert store.load() is None
+
+
+async def test_logout_waits_for_a_refresh_in_another_window(store):
+    svc = FakeAuthSvc()
+    signed_in(store)
+    held = store.lock()
+    held.acquire()
+    try:
+        async with httpx.AsyncClient(transport=svc.transport()) as c:
+            task = asyncio.create_task(logout(c, store))
+            await asyncio.sleep(0.3)
+            assert not task.done()
+            assert "POST /api/auth/logout" not in svc.log
+            held.release()
+            await asyncio.wait_for(task, timeout=5)
+    finally:
+        if held.is_locked:
+            held.release()
+    assert store.load() is None
+
+
+async def test_login_waits_for_a_refresh_in_another_window(store):
+    held = store.lock()
+    held.acquire()
+    try:
+        async with httpx.AsyncClient(transport=FakeAuthSvc().transport()) as c:
+            task = asyncio.create_task(login(c, store, URL, EMAIL, PASSWORD, clock=clock))
+            await asyncio.sleep(0.3)
+            assert not task.done() and store.load() is None
+            held.release()
+            await asyncio.wait_for(task, timeout=5)
+    finally:
+        if held.is_locked:
+            held.release()
+    assert store.load().username == USERNAME
+
+
+def test_instance_url_drops_user_info_and_does_not_echo_it():
+    assert (
+        instance_base("https://ada:pw@git2.example.com:8443/x") == "https://git2.example.com:8443"
+    )
+    with pytest.raises(ValueError) as err:
+        instance_base("ftp://ada:pw@git2.example.com")
+    assert "pw" not in str(err.value)
+
+
+async def test_login_with_a_malformed_me_answer(store):
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/auth/login":
+            hdrs = {"X-Access-Token": "a", "X-Refresh-Token": "r", "X-Access-Expires-In": "900"}
+            return httpx.Response(200, headers=hdrs, json={})
+        return httpx.Response(200, json={"id": "u1"})  # no username
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as c:
+        with pytest.raises(AuthUnavailable):
+            await login(c, store, URL, EMAIL, PASSWORD)
+    assert store.load() is None
+
+
+class SyncStreamingTransport(httpx.BaseTransport):
+    def __init__(self, svc: FakeAuthSvc) -> None:
+        self.svc = svc
+        self.bodies: list[bytes] = []
+
+    def handle_request(self, request: httpx.Request) -> httpx.Response:
+        body = b"".join(request.stream)
+        if request.url.path == "/api/thing":
+            self.bodies.append(body)
+        status, hdrs, payload = self.svc.respond(
+            request.method, request.url.path, request.headers, body
+        )
+        return httpx.Response(status, headers=hdrs, json=payload)
+
+
+def test_a_streamed_body_is_sent_again_on_the_retry_sync(store):
+    svc = FakeAuthSvc()
+    signed_in(store, access="revoked")
+    transport = SyncStreamingTransport(svc)
+    with httpx.Client(transport=transport, auth=SessionAuth(store, clock=clock)) as c:
+        r = c.post(f"{URL}/api/thing", content=(part for part in [b"hello ", b"world"]))
+    assert r.status_code == 200
+    assert transport.bodies == [b"hello world", b"hello world"]

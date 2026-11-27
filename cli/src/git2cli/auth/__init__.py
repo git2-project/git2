@@ -13,6 +13,7 @@ from git2cli.auth.store import (
     Credentials,
     CredentialStore,
     InsecureCredentialsFile,
+    InvalidCredentialsFile,
     default_directory,
 )
 
@@ -23,6 +24,7 @@ __all__ = [
     "CredentialStore",
     "Credentials",
     "InsecureCredentialsFile",
+    "InvalidCredentialsFile",
     "SessionAuth",
     "SignedOut",
     "default_directory",
