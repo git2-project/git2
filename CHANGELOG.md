@@ -7,6 +7,7 @@ Every PR adds its lines under `## [Unreleased]`: one line per change, starting w
 ## [Unreleased]
 
 ### Added
+- cli: `cli/` Python package `git2cli` with the `git2` command; no arguments opens the Textual terminal UI (an empty shell for now), `git2 --version`, Pilot tests, and a `cli` CI check with ruff, pytest and a pipx install (WBS-14.2)
 - ci: `ci` check on every pull request: gofmt, vet, build, migrations applied to a throwaway Postgres, `go test -race` with the integration tests (#20)
 - ci: `web` check: typecheck, lint, test and build of `web/` (#20)
 - ci: `migrations-check`: names, numbering, first-line comments and frozen files (`helpers/ci/check-migrations.sh`), then all migrations applied from scratch (#20)

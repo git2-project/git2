@@ -106,3 +106,29 @@ jobs:
       - run: pnpm lint
       - run: pnpm test
       - run: pnpm build
+
+  # The git2 command and terminal UI (cli/, docs/design/tui-v0.md).
+  cli:
+    name: cli
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: cli
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v10.3.3
+        with:
+          python-version: "3.11" # the oldest version pyproject.toml accepts
+
+      - run: uv sync --locked
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run pytest
+
+      # D-07's acceptance: a user installs with pipx on a clean machine.
+      - name: pipx install smoke test
+        run: |
+          pipx install .
+          git2 --version
