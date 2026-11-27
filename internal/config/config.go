@@ -6,8 +6,10 @@ package config
 import (
 	"fmt"
 	"net/netip"
+	"net/url"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/git2-project/git2/internal/realip"
@@ -38,7 +40,19 @@ type Config struct {
 	// TrustedProxies are the addresses whose X-Real-IP is believed: the
 	// gateway (TRUSTED_PROXY_CIDRS). Empty means none.
 	TrustedProxies []netip.Prefix
+
+	// GitSvcGRPCAddr is git-svc's gRPC address (GIT_SVC_GRPC_ADDR), the same
+	// variable the gateway reads.
+	GitSvcGRPCAddr string
+	// ExternalURL (GIT2_EXTERNAL_URL) is the address users type,
+	// scheme://host[:port] without a trailing slash; dash-api builds clone
+	// URLs from it. Required in prod; in dev it defaults to the gateway on
+	// localhost.
+	ExternalURL string
 }
+
+// devExternalURL is the gateway's default dev address (GATEWAY_PORT=8000).
+const devExternalURL = "http://localhost:8000"
 
 func Load() (*Config, error) {
 	_ = godotenv.Load(".env", "../.env")
@@ -51,6 +65,8 @@ func Load() (*Config, error) {
 		RedisPassword: os.Getenv("REDIS_PASSWORD"),
 		JWTSecret:     os.Getenv("JWT_SECRET"),
 		SetupToken:    os.Getenv("GIT2_SETUP_TOKEN"),
+
+		GitSvcGRPCAddr: getenv("GIT_SVC_GRPC_ADDR", "localhost:9090"),
 	}
 
 	maxConns, err := strconv.Atoi(getenv("POSTGRES_MAX_CONNS", "10"))
@@ -70,6 +86,10 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("TRUSTED_PROXY_CIDRS: %w", err)
 	}
 
+	if cfg.ExternalURL, err = externalURL(os.Getenv("GIT2_EXTERNAL_URL"), cfg.Environment); err != nil {
+		return nil, fmt.Errorf("GIT2_EXTERNAL_URL: %w", err)
+	}
+
 	if maxConns < 1 || maxConns > 1000 {
 		return nil, fmt.Errorf("POSTGRES_MAX_CONNS must be between 1 and 1000")
 	}
@@ -83,6 +103,23 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("JWT_SECRET must be at least 32 characters")
 	}
 	return cfg, nil
+}
+
+// externalURL checks GIT2_EXTERNAL_URL: http or https, a host, nothing after
+// it. Empty is allowed outside prod and means devExternalURL.
+func externalURL(raw, env string) (string, error) {
+	if raw == "" {
+		if env == "prod" {
+			return "", fmt.Errorf("required in prod")
+		}
+		return devExternalURL, nil
+	}
+	u, err := url.Parse(raw)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" ||
+		(u.Path != "" && u.Path != "/") || u.RawQuery != "" || u.Fragment != "" || u.User != nil {
+		return "", fmt.Errorf("must be http(s)://<host>[:port], got %q", raw)
+	}
+	return strings.TrimSuffix(u.String(), "/"), nil
 }
 
 func getenv(key, fallback string) string {
