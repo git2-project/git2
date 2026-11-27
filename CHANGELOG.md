@@ -7,6 +7,7 @@ Every PR adds its lines under `## [Unreleased]`: one line per change, starting w
 ## [Unreleased]
 
 ### Added
+- docs: repository access v0 design (`docs/design/repo-access-v0.md`): `read` / `write` / `maintain` levels from the owner, direct and team grants, `private` / `internal` visibility stored in `dash_api`, one check shared by dash-api and the gateway's Git route
 - ci: `ci` check on every pull request: gofmt, vet, build, migrations applied to a throwaway Postgres, `go test -race` with the integration tests (#20)
 - ci: `web` check: typecheck, lint, test and build of `web/` (#20)
 - ci: `migrations-check`: names, numbering, first-line comments and frozen files (`helpers/ci/check-migrations.sh`), then all migrations applied from scratch (#20)
