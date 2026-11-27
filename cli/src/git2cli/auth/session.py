@@ -182,8 +182,11 @@ async def login(
     """Signs in with email and password and stores the session. The
     password goes to auth-svc only and is never stored."""
     base = instance_base(instance_url)
+    # auth=None on these calls: they carry their own credentials, and a
+    # SessionAuth on the client would demand a session (login) or wait on the
+    # lock this module already holds (logout).
     response = await client.post(
-        f"{base}/api/auth/login", json={"email": email, "password": password}
+        f"{base}/api/auth/login", json={"email": email, "password": password}, auth=None
     )
     if response.status_code == 401:
         raise BadCredentials("wrong email or password")
@@ -194,7 +197,9 @@ async def login(
     access, refresh, expires_at = _tokens(response, clock())
 
     # Git over HTTPS signs in by username, which login does not return.
-    me = await client.get(f"{base}/api/auth/me", headers={"Authorization": f"Bearer {access}"})
+    me = await client.get(
+        f"{base}/api/auth/me", headers={"Authorization": f"Bearer {access}"}, auth=None
+    )
     if me.status_code != 200:
         raise AuthUnavailable(me.status_code)
     try:
@@ -219,6 +224,7 @@ async def logout(client: httpx.AsyncClient, store: CredentialStore) -> None:
             await client.post(
                 f"{creds.instance_url}/api/auth/logout",
                 json={"refresh_token": creds.refresh_token},
+                auth=None,
             )
         except httpx.TransportError:
             pass  # the refresh token expires on its own; nothing to retry

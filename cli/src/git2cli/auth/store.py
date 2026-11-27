@@ -3,6 +3,7 @@ section 6): ``credentials.json`` in the git2 config directory, shared by the
 CLI, the terminal UI and later git2-mcp. The account password is never
 stored."""
 
+import errno
 import json
 import os
 import tempfile
@@ -83,8 +84,10 @@ class CredentialStore:
             fd = os.open(self.path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
         except FileNotFoundError:
             return None
-        except OSError as e:  # ELOOP: it is a symlink
-            raise InvalidCredentialsFile(self.path) from e
+        except OSError as e:
+            if e.errno == errno.ELOOP:  # it is a symlink
+                raise InvalidCredentialsFile(self.path) from e
+            raise
         with os.fdopen(fd, encoding="utf-8") as f:
             if self._check_mode and os.fstat(fd).st_mode & 0o077:
                 raise InsecureCredentialsFile(self.path)

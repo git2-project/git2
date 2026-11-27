@@ -395,3 +395,15 @@ def test_a_streamed_body_is_sent_again_on_the_retry_sync(store):
         r = c.post(f"{URL}/api/thing", content=(part for part in [b"hello ", b"world"]))
     assert r.status_code == 200
     assert transport.bodies == [b"hello world", b"hello world"]
+
+
+async def test_login_and_logout_work_on_a_client_that_carries_the_session(store):
+    # The TUI keeps one client with SessionAuth. Login must not need a session,
+    # and logout (holding the lock) must not wait on the session's own refresh.
+    svc = FakeAuthSvc()
+    async with client(svc, store) as c:
+        await asyncio.wait_for(login(c, store, URL, EMAIL, PASSWORD, clock=clock), timeout=5)
+        signed_in(store, access="access-2", expires_in=1)  # expiring: would refresh under the lock
+        await asyncio.wait_for(logout(c, store), timeout=5)
+    assert store.load() is None
+    assert svc.refresh_calls == 0
