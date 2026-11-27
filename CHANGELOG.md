@@ -36,6 +36,7 @@ Every PR adds its lines under `## [Unreleased]`: one line per change, starting w
 - docs: Dash requirements in the Requirements Specification: code browser, repository list and empty repositories (FR-30, FR-31, FR-97, FR-98), merge requests, issues and pipelines (#16)
 - docs: Platform and Backup requirements in the Requirements Specification: gateway header trust, Git route and client IP (FR-02, FR-03, FR-05, FR-99), container hardening (NFR-35), backup settings from `git2.yaml`, retention and snapshot deletion (FR-65, FR-76, FR-100) (#23)
 - docs: identity v0 design (roles, teams, first-admin setup) in `docs/design/identity-v0.md`
+- docs: terminal UI v0 design (screens, seam with the CLI's API client, token store, work breakdown) in `docs/design/tui-v0.md`
 - docs: README, project charter, project plan, team map, roadmap, this changelog
 - contracts: examples for dash-api's repository and code-browsing answers (one repository, its tree, a README, branches, tags, history and a commit with a diff), so `prism mock` serves data Dash can show (#32)
 - web: dash-api types generated from `contracts/dash-api/openapi.yaml` into `@git2/api` (`pnpm --filter @git2/api gen`); the `web` check fails when they are out of date (#32)
