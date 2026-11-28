@@ -1,6 +1,8 @@
 package dashapi
 
 import (
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -121,12 +123,92 @@ func TestListRepositoriesOfAnotherOwner(t *testing.T) {
 	other := ownedBy(h.bob.ID, "secret")
 	bobs.OwnerId = h.bob.ID.String()
 	h.repos.list = func(*gitv1.ListRepositoriesRequest) (*gitv1.ListRepositoriesResponse, error) {
-		return &gitv1.ListRepositoriesResponse{Repositories: []*gitv1.Repository{bobs, other}}, nil
+		return &gitv1.ListRepositoriesResponse{Repositories: []*gitv1.Repository{bobs, other}, NextPageToken: "more"}, nil
 	}
 	rec := h.get("/api/repos?owner=bob", h.adaToken)
 	wantStatus(t, rec, http.StatusOK)
-	if n := names(t, decode(t, rec)); strings.Join(n, ",") != "bob/notes" {
+	body := decode(t, rec)
+	if n := names(t, body); strings.Join(n, ",") != "bob/notes" {
 		t.Fatalf("repositories = %v, want bob/notes", n)
+	}
+	// "secret" was dropped, so git-svc's token, which could name it, is not
+	// passed on and the list ends here.
+	if tok, ok := body["next_page_token"]; ok {
+		t.Fatalf("next_page_token = %v, want none after a dropped repository", tok)
+	}
+}
+
+// pagingRepos answers ListRepositories like git-svc: sorted by name, a page
+// of page_size, and a token that is base64url JSON naming the last
+// repository of the page (git-svc's repo/pagetoken.go).
+func pagingRepos(t *testing.T, repos []*gitv1.Repository) func(*gitv1.ListRepositoriesRequest) (*gitv1.ListRepositoriesResponse, error) {
+	return func(req *gitv1.ListRepositoriesRequest) (*gitv1.ListRepositoriesResponse, error) {
+		var mine []*gitv1.Repository
+		for _, r := range repos {
+			if r.GetOwnerId() == req.GetOwnerId() {
+				mine = append(mine, r)
+			}
+		}
+		start := 0
+		if tok := req.GetPageToken(); tok != "" {
+			b, err := base64.RawURLEncoding.DecodeString(tok)
+			var c struct{ N string }
+			if err != nil || json.Unmarshal(b, &c) != nil {
+				return nil, status.Error(codes.InvalidArgument, "page_token is invalid")
+			}
+			for start < len(mine) && strings.ToLower(mine[start].GetName()) <= c.N {
+				start++
+			}
+		}
+		end := min(start+int(req.GetPageSize()), len(mine))
+		resp := &gitv1.ListRepositoriesResponse{Repositories: mine[start:end]}
+		if end < len(mine) {
+			last := mine[end-1]
+			b, err := json.Marshal(map[string]string{"o": last.GetOwnerId(), "n": strings.ToLower(last.GetName()), "i": last.GetId()})
+			if err != nil {
+				t.Fatal(err)
+			}
+			resp.NextPageToken = base64.RawURLEncoding.EncodeToString(b)
+		}
+		return resp, nil
+	}
+}
+
+// git-svc's page tokens name the last repository of its page, so one must
+// not reach a caller who cannot read that page: another owner's list is
+// empty with no token, byte for byte the same as an unknown owner's.
+func TestListRepositoriesTokenDoesNotLeakNames(t *testing.T) {
+	h := newHarness(t)
+	h.repos.list = pagingRepos(t, []*gitv1.Repository{
+		ownedBy(h.bob.ID, "alpha"), ownedBy(h.bob.ID, "beta"), ownedBy(h.bob.ID, "secret-plans"),
+	})
+
+	bobs := h.get("/api/repos?owner=bob&page_size=1", h.adaToken)
+	wantStatus(t, bobs, http.StatusOK)
+	nobody := h.get("/api/repos?owner=nobody&page_size=1", h.adaToken)
+	if got, want := bobs.Body.String(), nobody.Body.String(); got != want {
+		t.Fatalf("bob's list = %s, unknown owner's = %s; want the same", got, want)
+	}
+	if got := strings.TrimSpace(bobs.Body.String()); got != `{"repositories":[]}` {
+		t.Fatalf("body = %s, want an empty list with no token", got)
+	}
+
+	// bob pages through his own list with the same tokens.
+	var all []string
+	path := "/api/repos?page_size=1"
+	for range 5 {
+		rec := h.get(path, h.bobToken)
+		wantStatus(t, rec, http.StatusOK)
+		body := decode(t, rec)
+		all = append(all, names(t, body)...)
+		tok, _ := body["next_page_token"].(string)
+		if tok == "" {
+			break
+		}
+		path = "/api/repos?page_size=1&page_token=" + tok
+	}
+	if strings.Join(all, ",") != "bob/alpha,bob/beta,bob/secret-plans" {
+		t.Fatalf("bob's pages = %v", all)
 	}
 }
 

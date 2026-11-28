@@ -43,10 +43,15 @@ type repositoryPageJSON struct {
 // listRepositories answers GET /repos: one owner's repositories that the
 // caller can read, sorted by name (FR-97). The owner defaults to the caller.
 //
-// An unknown owner and an owner whose repositories the caller cannot read
-// both get an empty list, so the list does not tell them apart. Repositories
-// the caller cannot read are dropped from git-svc's page, so a page can be
-// shorter than page_size and still have a next page.
+// Repositories the caller cannot read are dropped from git-svc's page. Its
+// next_page_token is passed on only when nothing was dropped: git-svc's
+// tokens are not encrypted and hold the lower-cased name of the last
+// repository on its page, so forwarding one after a drop would hand out
+// unreadable names one page at a time. When something was dropped the list
+// ends there. Under the owner-only rule that is exact: the caller's own list
+// pages normally, and another owner's list is empty with no token, the same
+// as an unknown owner's. A list of dash-api's own over the readable
+// repositories, with its own cursor, replaces this with repository access.
 func (h *Handler) listRepositories(w http.ResponseWriter, r *http.Request) {
 	size, ok := pageSize(w, r)
 	if !ok {
@@ -86,7 +91,8 @@ func (h *Handler) listRepositories(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	page := repositoryPageJSON{Repositories: []repositoryJSON{}, NextPageToken: resp.GetNextPageToken()}
+	page := repositoryPageJSON{Repositories: []repositoryJSON{}}
+	dropped := false
 	for _, repo := range resp.GetRepositories() {
 		id, ownerID, err := repoIDs(repo)
 		if err != nil {
@@ -98,9 +104,14 @@ func (h *Handler) listRepositories(w http.ResponseWriter, r *http.Request) {
 			writeUnavailable(w, r, "check repository access", err)
 			return
 		}
-		if level >= LevelRead {
-			page.Repositories = append(page.Repositories, toRepository(repo, userOwner(owner), h.deps.ExternalURL))
+		if level < LevelRead {
+			dropped = true
+			continue
 		}
+		page.Repositories = append(page.Repositories, toRepository(repo, userOwner(owner), h.deps.ExternalURL))
+	}
+	if !dropped {
+		page.NextPageToken = resp.GetNextPageToken()
 	}
 	httpx.JSON(w, http.StatusOK, page)
 }
