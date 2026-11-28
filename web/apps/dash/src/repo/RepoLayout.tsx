@@ -2,7 +2,7 @@ import { getRepository } from "@git2/api";
 import { useMemo, useState } from "react";
 import { Link, Outlet, useLocation, useParams } from "react-router-dom";
 import { Await } from "../components/Status";
-import { commitsLink, repoHome } from "../lib/paths";
+import { commitsLink, repoHome, settingsLink } from "../lib/paths";
 import { useApi } from "../lib/useApi";
 import { RepoContext } from "./RepoContext";
 
@@ -25,7 +25,11 @@ export function RepoLayout() {
               <CloneURL url={repository.clone_url} />
             </div>
             {repository.description && <p className="g2-muted">{repository.description}</p>}
-            <RepoTabs home={repoHome(name)} commits={commitsLink(name, repository.default_branch)} />
+            <RepoTabs
+              home={repoHome(name)}
+              commits={commitsLink(name, repository.default_branch)}
+              settings={settingsLink(name)}
+            />
           </header>
           <Outlet />
         </RepoContext.Provider>
@@ -35,18 +39,29 @@ export function RepoLayout() {
 }
 
 // RepoTabs: Code is active on the home, tree and blob pages, Commits on the
-// history and on a single commit.
-function RepoTabs({ home, commits }: { home: string; commits: string }) {
+// history and on a single commit, Settings on the settings page. Settings
+// shows for everyone until the repository carries the caller's permission;
+// dash-api refuses what the caller may not do.
+function RepoTabs({ home, commits, settings }: { home: string; commits: string; settings: string }) {
   const { pathname } = useLocation();
   const rest = pathname.slice(home.length);
-  const onCommits = rest.startsWith("/commits/") || rest.startsWith("/commit/");
+  const tab =
+    rest.startsWith("/commits/") || rest.startsWith("/commit/")
+      ? "commits"
+      : rest === "/settings" || rest.startsWith("/settings/")
+        ? "settings"
+        : "code";
+  const current = (t: string) => (tab === t ? "page" : undefined);
   return (
     <nav className="dash-tabs" aria-label="Repository">
-      <Link to={home} aria-current={onCommits ? undefined : "page"}>
+      <Link to={home} aria-current={current("code")}>
         Code
       </Link>
-      <Link to={commits} aria-current={onCommits ? "page" : undefined}>
+      <Link to={commits} aria-current={current("commits")}>
         Commits
+      </Link>
+      <Link to={settings} aria-current={current("settings")}>
+        Settings
       </Link>
     </nav>
   );

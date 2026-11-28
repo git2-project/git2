@@ -39,9 +39,14 @@ export function RepoListPage() {
 
   return (
     <section className="dash-page">
-      <header className="dash-page-header">
-        <h1>Repositories</h1>
-        {user && <p className="g2-muted">Signed in as {user.username}</p>}
+      <header className="dash-page-header dash-page-header-row">
+        <div>
+          <h1>Repositories</h1>
+          {user && <p className="g2-muted">Signed in as {user.username}</p>}
+        </div>
+        <Link to="/new" className="g2-button g2-primary">
+          New repository
+        </Link>
       </header>
 
       {repos.length > 0 && (
@@ -66,6 +71,9 @@ export function RepoListPage() {
         <div className="dash-empty">
           <p>You have no repositories yet.</p>
           <p className="g2-muted">Repositories you own or can read will appear here.</p>
+          <p>
+            <Link to="/new">Create your first repository</Link>
+          </p>
         </div>
       )}
 

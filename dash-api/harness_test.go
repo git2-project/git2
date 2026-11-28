@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"reflect"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -93,6 +94,32 @@ type fakeRepos struct {
 	repos []*gitv1.Repository
 	// find, when set, replaces the lookup in repos.
 	find func(*gitv1.FindRepositoryRequest) (*gitv1.FindRepositoryResponse, error)
+	// list, create and del answer their RPCs; an unset one answers
+	// UNIMPLEMENTED.
+	list   func(*gitv1.ListRepositoriesRequest) (*gitv1.ListRepositoriesResponse, error)
+	create func(*gitv1.CreateRepositoryRequest) (*gitv1.CreateRepositoryResponse, error)
+	del    func(*gitv1.DeleteRepositoryRequest) (*gitv1.DeleteRepositoryResponse, error)
+}
+
+func (f *fakeRepos) ListRepositories(ctx context.Context, req *gitv1.ListRepositoriesRequest) (*gitv1.ListRepositoriesResponse, error) {
+	if f.list == nil {
+		return f.UnimplementedRepositoryServiceServer.ListRepositories(ctx, req)
+	}
+	return f.list(req)
+}
+
+func (f *fakeRepos) CreateRepository(ctx context.Context, req *gitv1.CreateRepositoryRequest) (*gitv1.CreateRepositoryResponse, error) {
+	if f.create == nil {
+		return f.UnimplementedRepositoryServiceServer.CreateRepository(ctx, req)
+	}
+	return f.create(req)
+}
+
+func (f *fakeRepos) DeleteRepository(ctx context.Context, req *gitv1.DeleteRepositoryRequest) (*gitv1.DeleteRepositoryResponse, error) {
+	if f.del == nil {
+		return f.UnimplementedRepositoryServiceServer.DeleteRepository(ctx, req)
+	}
+	return f.del(req)
 }
 
 func (f *fakeRepos) FindRepository(_ context.Context, req *gitv1.FindRepositoryRequest) (*gitv1.FindRepositoryResponse, error) {
@@ -308,7 +335,17 @@ func (h *harness) token(u authsvc.User) string {
 // get sends a GET with token as the bearer (none when empty).
 func (h *harness) get(path, token string) *httptest.ResponseRecorder {
 	h.t.Helper()
-	req := httptest.NewRequest(http.MethodGet, path, nil)
+	return h.do(http.MethodGet, path, token, "")
+}
+
+// do sends a request with body as JSON (none when empty) and token as the
+// bearer (none when empty).
+func (h *harness) do(method, path, token, body string) *httptest.ResponseRecorder {
+	h.t.Helper()
+	req := httptest.NewRequest(method, path, strings.NewReader(body))
+	if body != "" {
+		req.Header.Set("Content-Type", "application/json")
+	}
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}

@@ -31,6 +31,10 @@ export function commitLink(name: RepoName, sha: string): string {
   return `${repoHome(name)}/commit/${encodeURIComponent(sha)}`;
 }
 
+export function settingsLink(name: RepoName): string {
+  return `${repoHome(name)}/settings`;
+}
+
 export function shortSha(sha: string): string {
   return sha.slice(0, 7);
 }

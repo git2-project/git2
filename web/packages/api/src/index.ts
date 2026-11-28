@@ -5,6 +5,8 @@ export { hasSession, login, logout, me, register } from "./auth";
 export type { User } from "./auth";
 export { TOKENS_STORAGE_KEY } from "./tokens";
 export {
+  createRepository,
+  deleteRepository,
   getBlob,
   getCommit,
   getRaw,
@@ -23,6 +25,7 @@ export type {
   CommitDetail,
   CommitPage,
   CommitRef,
+  CreateRepositoryRequest,
   DiffStats,
   FileDiff,
   PageOptions,

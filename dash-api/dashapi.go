@@ -81,6 +81,9 @@ func (h *Handler) Mount(r chi.Router) {
 	r.Group(func(r chi.Router) {
 		r.Use(authsvc.RequireAuth(h.deps.JWT, h.deps.Redis))
 
+		r.Get("/repos", h.listRepositories)
+		r.Post("/repos", h.createRepository)
+
 		// Every route under a repository resolves it and checks the caller's
 		// level first (resolveRepo); each route then names the level it needs.
 		r.Route("/repos/{owner}/{repo}", func(r chi.Router) {
@@ -88,6 +91,7 @@ func (h *Handler) Mount(r chi.Router) {
 			read := requireLevel(LevelRead)
 
 			r.With(read).Get("/", h.getRepository)
+			r.With(requireLevel(LevelMaintain)).Delete("/", h.deleteRepository)
 
 			r.With(read).Get("/branches", h.listBranches)
 			r.With(read).Get("/tags", h.listTags)

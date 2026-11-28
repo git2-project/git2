@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Outlet } from "react-router-dom";
+import { Link, Outlet } from "react-router-dom";
 import { useAuth } from "./AuthProvider";
 import { ThemeToggle } from "./ThemeToggle";
 
@@ -17,9 +17,10 @@ export function AppShell({ plane, otherPlane, children }: AppShellProps) {
   return (
     <div className="g2-shell">
       <header className="g2-topbar">
-        <span className="g2-brand">
+        {/* Home of the plane: "/" inside the router's basename (/admin/ for Admin). */}
+        <Link to="/" className="g2-brand">
           git2 <strong>{plane}</strong>
-        </span>
+        </Link>
         <nav className="g2-topbar-actions">
           {otherPlane && <a href={otherPlane.href}>{otherPlane.label}</a>}
           {user && <span className="g2-muted">{user.username}</span>}

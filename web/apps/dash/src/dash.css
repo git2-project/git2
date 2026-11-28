@@ -711,3 +711,101 @@ a.g2-button:hover {
     display: none;
   }
 }
+
+/* Forms: new repository, settings */
+
+a.g2-button.g2-primary {
+  color: var(--g2-primary-text);
+}
+
+a.g2-button.g2-primary:hover {
+  background: var(--g2-primary);
+  filter: brightness(1.08);
+}
+
+.dash-page-header-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.dash-narrow {
+  max-width: 640px;
+}
+
+.dash-form {
+  display: grid;
+  gap: 16px;
+}
+
+.dash-form h2 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.dash-form p {
+  margin: 0;
+}
+
+.dash-field {
+  display: grid;
+  gap: 6px;
+}
+
+.dash-field label {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.dash-field input {
+  width: 100%;
+  min-width: 0;
+  padding: 8px 10px;
+  font: inherit;
+  color: var(--g2-text);
+  background: var(--g2-bg);
+  border: 1px solid var(--g2-border);
+  border-radius: 6px;
+}
+
+.dash-field input:focus-visible {
+  border-color: var(--g2-primary);
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--g2-primary) 18%, transparent);
+}
+
+.dash-name-input {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dash-hint {
+  margin: 0;
+  font-size: 13px;
+}
+
+.dash-form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.dash-danger-zone {
+  padding: 16px;
+  border: 1px solid var(--g2-error-text);
+  border-radius: var(--g2-radius);
+}
+
+.dash-danger {
+  color: var(--g2-error-text);
+  border-color: var(--g2-error-text);
+  font-weight: 600;
+}
+
+.dash-danger:not(:disabled):hover {
+  color: var(--g2-error-bg);
+  background: var(--g2-error-text);
+}
